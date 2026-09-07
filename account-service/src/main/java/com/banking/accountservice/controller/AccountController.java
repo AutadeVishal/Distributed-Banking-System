@@ -23,11 +23,11 @@ public class AccountController {
     private final AccountService accountService;
 
     @PostMapping()
-    public ResponseEntity<CreateAccountRequest> createAccount(@Valid @RequestBody request){
+    public ResponseEntity<AccountResponse> createAccount(@Valid @RequestBody CreateAccountRequest request){
         return ResponseEntity.status(HttpStatus.CREATED).body(accountService.createAccount(request));
     }
 
-    @GetMapping("/accountNumber")
+    @GetMapping("/{accountNumber}")
     public ResponseEntity<AccountResponse> getAccount(
             @PathVariable String accountNumber
     ){
@@ -38,7 +38,8 @@ public class AccountController {
     public ResponseEntity<BigDecimal> getBalance(
             @PathVariable String accountNumber
     ){
-        return accountService.getBalance(accountNumber);
+        BigDecimal balance=accountService.getBalance(accountNumber);
+        return ResponseEntity.ok(balance);
     }
 
     @PutMapping("/{accountNumber}/block")

@@ -1,5 +1,6 @@
 package com.banking.accountservice.dto;
 
+import com.banking.accountservice.entity.AccountStatus;
 import com.banking.accountservice.entity.AccountType;
 import jakarta.persistence.Column;
 import jakarta.validation.constraints.Email;
@@ -32,10 +33,5 @@ public class CreateAccountRequest {
     @NotNull(message="Initial Deposit is Required")
     @Positive(message="Initial Deposit Must be Positive")
     private BigDecimal initialDeposit;
-
-
-
-
-
 
 }
