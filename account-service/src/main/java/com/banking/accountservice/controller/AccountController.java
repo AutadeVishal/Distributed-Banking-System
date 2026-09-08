@@ -55,6 +55,7 @@ public class AccountController {
         Transaction Service calling when transfer initiated
         deduct balance
      */
+    @PutMapping("/{accountNumber}/deduct")
     public ResponseEntity<String> deductBalance(
             @PathVariable String accountNumber,
             @RequestParam BigDecimal amount
