@@ -46,7 +46,7 @@ public class TransactionEventConsumer {
             //generate six digit OTP
             String otp=String.format("%06d",(int)(Math.random()*900000)+100000);
 
-            //store OTP in redix
+            //store OTP in redis
             //expires in 5 minutes
             String otpKey="verification:otp"+transactionId;
                     redisTemplate.opsForValue().set(otpKey,otp,OTP_EXPIRY_MINUTES, TimeUnit.MINUTES);
