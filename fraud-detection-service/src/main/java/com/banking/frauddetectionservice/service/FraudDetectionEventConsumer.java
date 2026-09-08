@@ -15,8 +15,8 @@ public class FraudDetectionEventConsumer {
     private final FraudDetectionService fraudDetectionService;
 
     /*
-        Listens to transaction.initiated topic
-        every transaction goes through this befor ecompleteing
+        Listens to transaction.initiated topic send by transaction service
+        every transaction goes through this befor completion
 
      */
     @KafkaListener(topics = "transaction.initiated",groupId="fraud-detection-group")
