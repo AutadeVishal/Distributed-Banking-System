@@ -188,6 +188,16 @@ public class TransactionService {
         kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,transaction.getId(),completedEvent);
         log.info("SAGA COMPLETE- transaction : {} completed ",transaction.getId());
     }
+    public void processCleanResult(String transactionId){
+        Transaction transaction=transactionRepository.findById(transactionId)
+                .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
+        if(transaction.getTransactionStatus()!=TransactionStatus.COMPLETED){
+            log.warn("Transaction {} not COMPLETED -skipping ",transactionId);
+            return ;
+        }
+        completeTransaction(transaction);
 
+
+    }
 
 }

@@ -1,12 +1,12 @@
 spring:
   application:
     name: transaction-service
-
   datasource:
-    url: jdbc:postgresql://localhost:5432/transaction_db
-    username: postgres
+    url: host:localhost
+    username: jdbc:postgresql://localhost:5432/transaction_db
     password: 1234
     driver-class-name: org.postgresql.Driver
+
 
   jpa:
     hibernate:
@@ -23,6 +23,9 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "*"
+  data:
+    redis:
+      port: 6379
 
 account:
   service:
