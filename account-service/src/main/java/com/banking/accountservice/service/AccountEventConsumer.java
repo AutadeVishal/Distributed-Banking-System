@@ -20,7 +20,7 @@ public class AccountEventConsumer {
     /*
     consume transaction completed event from kafka
      */
-    @KafkaListener(topics="transaction.completed")
+    @KafkaListener(topics="transaction.completed",groupId = "account-service")
     public void consumeTransactionCompleted(
             @Payload Map<String,Object> payload
     ){
@@ -39,7 +39,7 @@ public class AccountEventConsumer {
         Consume Fraud Detected Event From Kafka
         Blocks The Account Debits
      */
-    @KafkaListener(topics="fraud-detected")
+    @KafkaListener(topics="fraud-detected",groupId = "account-service")
     public void consumeFraudDetected(
             @Payload Map<String,Object> payload
     )

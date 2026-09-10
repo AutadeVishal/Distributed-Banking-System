@@ -27,7 +27,7 @@ public class TransactionEventConsumer {
         consume verification.required event created by fraud detection service
         generate otp
      */
-    @KafkaListener(topics = "verification.required",groupId="transaction-service-group")
+    @KafkaListener(topics = "verification.required",groupId="transaction-service")
     public void consumeVerificationRequired(
             @Payload Map<String,Object> payload
     ){

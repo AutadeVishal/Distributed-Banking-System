@@ -19,7 +19,7 @@ public class FraudDetectionEventConsumer {
         every transaction goes through this befor completion
 
      */
-    @KafkaListener(topics = "transaction.initiated",groupId="fraud-detection-group")
+    @KafkaListener(topics = "transaction.initiated",groupId="fraud-detection")
     public void consumeTransactionInitiated(
             @Payload Map<String,Object> payload
     ){

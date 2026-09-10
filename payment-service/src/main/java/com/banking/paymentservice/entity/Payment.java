@@ -1,0 +1,48 @@
+package com.banking.paymentservice.entity;
+
+import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.UpdateTimestamp;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Table(name="payments")
+public class Payment {
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private String id;
+
+    private String razorpayOrderId;
+    private String razorpayPaymentId;
+
+    @Column(nullable = false)
+    private String accountNumber;
+
+    @Column(nullable = false,precision = 15,scale=2)
+    private BigDecimal amount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private String currency;
+
+    @Column(nullable = false)
+    private PaymentStatus status;
+
+
+    private String description;
+
+    private String failureReason;
+    @CreatedDate
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    private LocalDateTime updatedAt;
+}
