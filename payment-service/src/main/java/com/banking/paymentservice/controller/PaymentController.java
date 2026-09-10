@@ -31,7 +31,7 @@ public class PaymentController {
     ) throws RazorpayException
     {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(paymentService.createPaymentOrder(request);
+                .body(paymentService.createPaymentOrder(request));
     }
 
     //razorpay webhook endpoint

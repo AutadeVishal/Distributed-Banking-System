@@ -96,15 +96,15 @@ public class PaymentService {
             handlePaymentSuccess(payload);
         }
         else if("payment.failed".equals(event)){
-            handlePaymentFailure(paylaod);
+            handlePaymentFailure(payload);
         }
     }
 
-    public void handlePaymentSuccess(Map<String,Object> paylaod){
+    public void handlePaymentSuccess(Map<String,Object> payload){
         try{
-            Map<String,Object> paymentdata=extractPaymentData(payload);
-            String orderId=(String)paymentdata.get("orderId");
-            String razorpayPaymentId=(String)paymentdata.get("id");
+            Map<String,Object> paymentData=extractPaymentData(payload);
+            String orderId=(String)paymentData.get("order_id");
+            String razorpayPaymentId=(String)paymentData.get("id");
 
             Payment payment=paymentRepository.findByRazorpayOrderId(orderId)
                     .orElseThrow(()->new RuntimeException("Payment not found for order :"+orderId));
@@ -124,8 +124,53 @@ public class PaymentService {
         catch(Exception e){
             log.error("Error Handeling payment success :{}",e.getMessage());
         }
+    }
 
+    public void handlePaymentFailure(Map<String,Object> payload){
+      try {
+          Map<String, Object> paymentData = extractPaymentData(payload);
+          String orderId = (String) paymentData.get("order_id");
 
+          Payment payment = paymentRepository.findByRazorpayOrderId(orderId)
+                  .orElseThrow(() -> new RuntimeException("Payment not found for order :" + orderId));
+          payment.setStatus(PaymentStatus.FAILED);
+          payment.setFailureReason("Payment Failed via Razorpay");
+          paymentRepository.save(payment);
 
+          Map<String, Object> event = new HashMap<>();
+          event.put("paymentId", payment.getId());
+          event.put("accountNumber", payment.getAccountNumber());
+          event.put("amount", payment.getAmount());
+          event.put("reason", "Payment Failed Via RazorPay");
+          kafkaTemplate.send(PAYMENT_FAILED_TOPIC, payment.getId(), event);
+          log.info("Payment Failed :{}", payment.getId());
+      }
+      catch (Exception e){
+          log.error("Payment Failure: {}",e.getMessage());
+      }
+    }
+
+    private Map<String,Object> extractPaymentData(Map<String,Object> paylaod) {
+        Map<String,Object> entity=(Map<String,Object>)paylaod.get("payload");
+
+        Map<String,Object> paymentWrapper=(Map<String,Object>)entity.get("payment");
+        return (Map<String,Object>)paymentWrapper.get("entity");
     }
 }
+
+
+/*
+{
+payload in webhook from razorpay is like:
+  "event": "payment.captured",
+  "payload": {
+    "payment": {
+      "entity": {
+        "id": "pay_123",
+        "order_id": "order_456",
+        "amount": 50000
+      }
+    }
+  }
+}
+ */
