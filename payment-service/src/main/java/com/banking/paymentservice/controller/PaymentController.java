@@ -38,6 +38,7 @@ public class PaymentController {
     @PostMapping("/webhook")
     public ResponseEntity<String> handleWebhook(
             @RequestBody Map<String,Object> payload){
+        paymentService.handleWebhook(payload);
         return ResponseEntity.ok("Webhook Processed");
     }
 

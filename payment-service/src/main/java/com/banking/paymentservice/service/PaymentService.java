@@ -12,9 +12,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -22,6 +25,7 @@ import java.util.UUID;
 @Slf4j
 public class PaymentService {
     private final PaymentRepository paymentRepository;
+    private final KafkaTemplate<String,Object> kafkaTemplate;
     @Value("razorpay.key-id")
     private String keyId;
     @Value("razorpay.key-secret")
@@ -81,6 +85,46 @@ public class PaymentService {
           "INR", "CREATED",
                 keyId
         );
+    }
+
+
+    public void handleWebhook(Map<String,Object> payload){
+        log.info("Received Razorpay Webhook : {}",payload.get("event"));
+        String event=(String) payload.get("event");
+
+        if("payment.captured".equals(event)){
+            handlePaymentSuccess(payload);
+        }
+        else if("payment.failed".equals(event)){
+            handlePaymentFailure(paylaod);
+        }
+    }
+
+    public void handlePaymentSuccess(Map<String,Object> paylaod){
+        try{
+            Map<String,Object> paymentdata=extractPaymentData(payload);
+            String orderId=(String)paymentdata.get("orderId");
+            String razorpayPaymentId=(String)paymentdata.get("id");
+
+            Payment payment=paymentRepository.findByRazorpayOrderId(orderId)
+                    .orElseThrow(()->new RuntimeException("Payment not found for order :"+orderId));
+            payment.setRazorpayPaymentId(razorpayPaymentId);
+            payment.setStatus(PaymentStatus.COMPLETED);
+            paymentRepository.save(payment);
+
+            //publish to kafka - Payment Completed
+            Map<String,Object> event=new HashMap<>();
+            event.put("paymentId",payment.getId());
+            event.put("accountNumber",payment.getAccountNumber());
+            event.put("amount",payment.getAmount());
+            event.put("razorpayPaymentId",razorpayPaymentId);
+            kafkaTemplate.send(PAYMENT_COMPLETED_TOPIC,payment.getId(),event);
+            log.info("Payment Completed :{}",payment.getId());
+        }
+        catch(Exception e){
+            log.error("Error Handeling payment success :{}",e.getMessage());
+        }
+
 
 
     }
