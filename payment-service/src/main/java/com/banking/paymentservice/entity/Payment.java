@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Entity
 @Table(name="payments")
 public class Payment {
     @Id
@@ -29,10 +30,11 @@ public class Payment {
     @Column(nullable = false,precision = 15,scale=2)
     private BigDecimal amount;
 
-    @Enumerated(EnumType.STRING)
+
     @Column(nullable = false)
     private String currency;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PaymentStatus status;
 

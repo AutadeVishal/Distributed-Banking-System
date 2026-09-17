@@ -15,6 +15,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -164,7 +165,7 @@ public class TransactionService {
         //publish fraud.detected->account service will block account
         Map<String,Object> fraudEvent=new HashMap<>();
         fraudEvent.put("transactionId",transaction.getId());
-        fraudEvent.put("accoutNumber",transaction.getSenderAccountNumber());
+        fraudEvent.put("accountNumber",transaction.getSenderAccountNumber());
         fraudEvent.put("reason",reason);
         kafkaTemplate.send(FRAUD_DETECTED_TOPIC,transaction.getSenderAccountNumber(),fraudEvent);
         log.warn("fraud.detected published - account :{} will be blocked ",transaction.getSenderAccountNumber());
