@@ -80,7 +80,7 @@ public class AccountService {
             throw new RuntimeException("Account : "+ account.getAccountNumber() +" is not active to deduct amount");
         }
         if(account.getBalance().compareTo(amount)<0){
-            throw new RuntimeException("Insufficeint Balance");
+            throw new RuntimeException("Insufficient Balance");
         }
         account.setBalance(account.getBalance().subtract(amount));
         accountRepository.save(account);

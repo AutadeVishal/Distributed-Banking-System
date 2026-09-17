@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class CreateAccountRequest {
     @NotBlank(message = "Account Holder Name is Required")
-    private String AccountHolderName;
+    private String accountHolderName;
 
     @NotBlank(message="Email is Required")
     @Email(message="Invalid Email Format")
