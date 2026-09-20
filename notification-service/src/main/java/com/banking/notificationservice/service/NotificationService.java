@@ -1,5 +1,6 @@
 package com.banking.notificationservice.service;
 
+import com.banking.events.FraudDetectedEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -63,15 +64,15 @@ public class NotificationService {
     }
 @KafkaListener(topics = "fraud.detected")
     public void consumeFraudDetected(
-            @Payload Map<String,Object> payload
-    ){
+        @Payload FraudDetectedEvent event
+        ){
         try{
 
-            String accountNumber=(String) payload.get("accountNumber");
-            String reason=(String) payload.get("reason");
+            String accountNumber=event.senderAccountNumber();
+            String reason=event.reason();
             sendAlert(accountNumber,
                     "Suspicious Activity Detected",
-                    String.format("Your account : %s has been blocked due to suspicious activity.\n Contact Your Bank Immediately.",accountNumber));
+                    String.format("Your account : %s has been blocked due to suspicious activity.\n Contact Your Bank Immediately.%s",accountNumber,reason));
         }
         catch(Exception e){
             log.error("Exception occurred while consumeFraudDetected : {}",e.getMessage());

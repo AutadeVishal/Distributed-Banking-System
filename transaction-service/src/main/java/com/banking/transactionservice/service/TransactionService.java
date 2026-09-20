@@ -1,12 +1,13 @@
 package com.banking.transactionservice.service;
 
+import com.banking.events.FraudDetectedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.dto.TransferRequest;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
-import com.banking.transactionservice.event.TransactionCompletedEvent;
+import com.banking.events.TransactionCompletedEvent;
 import com.banking.transactionservice.event.TransactionInitiatedEvent;
 import com.banking.transactionservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -163,11 +164,12 @@ public class TransactionService {
 
     private void blockAccountAndCompensate(Transaction transaction,String reason){
         //publish fraud.detected->account service will block account
-        Map<String,Object> fraudEvent=new HashMap<>();
-        fraudEvent.put("transactionId",transaction.getId());
-        fraudEvent.put("accountNumber",transaction.getSenderAccountNumber());
-        fraudEvent.put("reason",reason);
-        kafkaTemplate.send(FRAUD_DETECTED_TOPIC,transaction.getSenderAccountNumber(),fraudEvent);
+        FraudDetectedEvent event=new FraudDetectedEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                reason
+        );
+        kafkaTemplate.send(FRAUD_DETECTED_TOPIC,transaction.getSenderAccountNumber(),event);
         log.warn("fraud.detected published - account :{} will be blocked ",transaction.getSenderAccountNumber());
 
         //SAGA compensation
@@ -178,7 +180,8 @@ public class TransactionService {
         transaction.setTransactionStatus(TransactionStatus.COMPLETED);
         transaction.setCompletedAt(LocalDateTime.now());
         transactionRepository.save(transaction);
-        TransactionCompletedEvent completedEvent=new TransactionCompletedEvent(
+
+        TransactionCompletedEvent event=new TransactionCompletedEvent(
                 transaction.getId(),
                 transaction.getSenderAccountNumber(),
                 transaction.getReceiverAccountNumber(),
@@ -186,13 +189,13 @@ public class TransactionService {
                 transaction.getDescription()
         );
 
-        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,transaction.getId(),completedEvent);
+        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,transaction.getId(),event);
         log.info("SAGA COMPLETE- transaction : {} completed ",transaction.getId());
     }
     public void processCleanResult(String transactionId){
         Transaction transaction=transactionRepository.findById(transactionId)
                 .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
-        if(transaction.getTransactionStatus()!=TransactionStatus.COMPLETED){
+        if(transaction.getTransactionStatus()!=TransactionStatus.PROCESSING){
             log.warn("Transaction {} not COMPLETED -skipping ",transactionId);
             return ;
         }

@@ -1,5 +1,6 @@
 package com.banking.frauddetectionservice.service;
 
+import com.banking.events.TransactionInitiatedEvent;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,13 +21,13 @@ public class FraudDetectionEventConsumer {
         every transaction goes through this befor completion
 
      */
-    @KafkaListener(topics = "transaction.initiated",groupId="fraud-detection")
+    @KafkaListener(topics = "transaction.initiated")
     public void consumeTransactionInitiated(
-            @Payload Map<String,Object> payload
-    ){
-        log.info("Recieved Transaction for Fraud Check : {}",payload.get("transactionId"));
+            @Payload TransactionInitiatedEvent event
+            ){
+        log.info("Recieved Transaction for Fraud Check : {}",event.transactionId());
         try{
-            fraudDetectionService.checkTransaction(payload);
+            fraudDetectionService.checkTransaction(event);
         }catch(Exception e){
 
         }

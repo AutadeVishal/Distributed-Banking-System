@@ -1,5 +1,7 @@
 package com.banking.frauddetectionservice.service;
 
+import com.banking.events.TransactionInitiatedEvent;
+import com.banking.events.VerificationRequiredEvent;
 import com.banking.frauddetectionservice.client.AccountServiceClient;
 import com.banking.frauddetectionservice.modal.FraudCheckResult;
 import lombok.RequiredArgsConstructor;
@@ -33,25 +35,27 @@ public class FraudDetectionService {
 
 
 
-    public void checkTransaction(Map<String,Object> payload){
-        String transactionId=(String) payload.get("transactionId");
-        String accountNumber=(String) payload.get("senderAccountNumber");
-        BigDecimal amount=new BigDecimal(payload.get("amount").toString());
+    public void checkTransaction(TransactionInitiatedEvent event){
+        String transactionId=event.transactionId();
+        String senderAccountNumber=event.senderAccountNumber();
+        BigDecimal amount=event.amount();
 
         //fetch real balance from account service
-        BigDecimal senderBalance=accountServiceClient.getBalance(accountNumber);
+        BigDecimal senderBalance=accountServiceClient.getBalance(senderAccountNumber);
 
         log.info("Checking Transaction : {} account : {} amount : {} balance: {} ",
-                transactionId,accountNumber,amount,senderBalance);
-        FraudCheckResult result=performFraudChecks(accountNumber,amount,senderBalance);
+                transactionId,senderAccountNumber,amount,senderBalance);
+        FraudCheckResult result=performFraudChecks(senderAccountNumber,amount,senderBalance);
         if(result.isFraud()){
-            log.info("Suspicious Activity Detected -account : {} resaon: {} .Requesting OTP Verification",accountNumber,result.getReason());
-            Map<String,Object> verificationEvent=new HashMap<>();
-            verificationEvent.put("transactionId",transactionId);
-            verificationEvent.put("accountNumber",accountNumber);
-            verificationEvent.put("amount",amount);
-            verificationEvent.put("reason",result.getReason());
-            kafkaTemplate.send(VERIFICATION_REQUIRED_TOPIC,transactionId,verificationEvent);
+            log.info("Suspicious Activity Detected -account : {} resaon: {} .Requesting OTP Verification",senderAccountNumber,result.getReason());
+
+            VerificationRequiredEvent verificationRequiredEvent=new VerificationRequiredEvent(
+                    transactionId,
+                    senderAccountNumber,
+                    amount,
+                    result.getReason()
+            );
+            kafkaTemplate.send(VERIFICATION_REQUIRED_TOPIC,transactionId,verificationRequiredEvent);
         }
         else{
             //proceed with transaction
