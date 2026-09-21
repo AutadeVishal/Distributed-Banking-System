@@ -1,5 +1,6 @@
 package com.banking.transactionservice.service;
 
+import com.banking.events.OTPGeneratedEvent;
 import com.banking.events.VerificationRequiredEvent;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
@@ -12,6 +13,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -36,9 +38,9 @@ public class TransactionEventConsumer {
             ){
         try{
             String transactionId=verificationRequiredEvent.transactionId();
-            String accountNumber=verificationRequiredEvent.senderAcountNumber();
+            String senderAccountNumber=verificationRequiredEvent.senderAcountNumber();
             String reason=verificationRequiredEvent.reason();
-            String amount=verificationRequiredEvent.amount().toString();
+            BigDecimal amount=verificationRequiredEvent.amount();
             log.info("Verification Required - transaction: {} reason : {}",transactionId,reason);
             Transaction transaction=transactionRepository.findById(transactionId)
                     .orElseThrow(()->new RuntimeException("Transaction Not Found:"+transactionId));
@@ -49,7 +51,7 @@ public class TransactionEventConsumer {
             }
             //generate six digit OTP
             String otp=String.format("%06d",(int)(Math.random()*900000)+100000);
-
+            log.info("OTP Generated - transaction: {} otp : {}",transactionId,otp);
             //store OTP in redis
             //expires in 5 minutes
             String otpKey="verification:otp"+transactionId;
@@ -61,13 +63,15 @@ public class TransactionEventConsumer {
                     log.info("OTP Generated for Transaction : {} expires in {} min",transactionId,OTP_EXPIRY_MINUTES);
 
                     //notify user
-            Map<String,Object> otpEvent=new HashMap<>();
-            otpEvent.put("transactionId",transactionId);
-            otpEvent.put("accountNumber",accountNumber);
-            otpEvent.put("reason",reason);
-            otpEvent.put("otp",otp);
-            otpEvent.put("amount",amount);
-            kafkaTemplate.send(TRANSACTION_OTP_GENERATED_TOPIC,transactionId,otpEvent);
+
+            OTPGeneratedEvent otpGeneratedEvent =new OTPGeneratedEvent(
+                    transactionId,
+                    senderAccountNumber,
+                    reason,
+                    otp,
+                    amount
+            );
+            kafkaTemplate.send(TRANSACTION_OTP_GENERATED_TOPIC,transactionId,otpGeneratedEvent);
 
 
         }catch(Exception e){
@@ -77,12 +81,11 @@ public class TransactionEventConsumer {
 
 
 
-    @KafkaListener(topics = "fraud.check.clean",groupId = "transaction-service")
+    @KafkaListener(topics = "fraud.check.clean")
     public void consumeFraudCheckClean(
-            @Payload Map<String,Object> payload
+            @Payload String transactionId
     ){
         try{
-            String transactionId=(String) payload.get("transactionId");
             transactionService.processCleanResult(transactionId);
 
         }catch(Exception e){

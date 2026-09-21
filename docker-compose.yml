@@ -10,11 +10,16 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 1234
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     networks:
       - banking-network
 
@@ -28,6 +33,11 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
       - banking-network
 
@@ -39,24 +49,30 @@ services:
   kafka:
     image: apache/kafka:latest
     container_name: kafka
-    ports:
-      - "9092:9092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
 
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9092
 
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
 
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    ports:
+      - "9092:29092"
+      - "9093:9093"
     networks:
       - banking-network
   # =========================
@@ -65,11 +81,19 @@ services:
 
   account-service:
     image: account-service:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: account-service
     container_name: account-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
     ports:
       - "8081:8081"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - banking-network
 
@@ -80,13 +104,23 @@ services:
 
   transaction-service:
     image: transaction-service:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: transaction-service
     container_name: transaction-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
     ports:
       - "8082:8082"
     depends_on:
-      - postgres
-      - kafka
-      - account-service
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      account-service:
+        condition: service_started
     networks:
       - banking-network
 
@@ -97,11 +131,19 @@ services:
 
   payment-service:
     image: payment-service:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: payment-service
     container_name: payment-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
     ports:
       - "8083:8083"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - banking-network
 
@@ -112,13 +154,23 @@ services:
 
   fraud-detection-service:
     image: fraud-detection-service:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: fraud-detection-service
     container_name: fraud-detection-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
     ports:
       - "8084:8084"
     depends_on:
-      - redis
-      - kafka
-      - account-service
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      account-service:
+        condition: service_started
     networks:
       - banking-network
 
@@ -129,11 +181,19 @@ services:
 
   notification-service:
     image: notification-service:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: notification-service
     container_name: notification-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
     ports:
       - "8085:8085"
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     networks:
       - banking-network
 
@@ -144,13 +204,23 @@ services:
 
   api-gateway:
     image: api-gateway:1.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: api-gateway
     container_name: api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
     ports:
       - "8080:8080"
     depends_on:
-      - account-service
-      - transaction-service
-      - payment-service
+      account-service:
+        condition: service_started
+      transaction-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
     networks:
       - banking-network
 

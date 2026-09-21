@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: payment-service
+  datasource:
+    url: jdbc:postgresql://postgres:5432/payments_db
+    username: postgres
+    password: 1234
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+  kafka:
+    bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        spring.json.add.type.headers: true
+    consumer:
+      group-id: payment-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.banking.events,java.lang,java.util"
+        spring.json.use.type.headers: true
+server:
+  port: 8083
+razorpay:
+  key-id: rzp_test_TdRBWRUTpXMtWa
+  key-secret: JYbilEMinbYEyuIK1isD1gNK
+  webhook-secret: d4bcd51a1625829b3d3970680f1bff3681b2d10877fafb8ca7b0c8beb215d0b9c1eb3b59e5098c5c4f511be25c91f31
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,5 +1,7 @@
 package com.banking.paymentservice.service;
 
+import com.banking.events.PaymentCompletedEvent;
+import com.banking.events.PaymentFailedEvent;
 import com.banking.paymentservice.dto.CreatePaymentRequest;
 import com.banking.paymentservice.dto.PaymentResponse;
 import com.banking.paymentservice.entity.Payment;
@@ -16,7 +18,6 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -32,7 +33,7 @@ public class PaymentService {
     private String keySecret;
     private static final String PAYMENT_COMPLETED_TOPIC="payment.completed";
 
-    private static final String PAYMENT_FAILED_TOPIC="payment.fail";
+    private static final String PAYMENT_FAILED_TOPIC="payment.failed";
 
 
     /*
@@ -113,12 +114,14 @@ public class PaymentService {
             paymentRepository.save(payment);
 
             //publish to kafka - Payment Completed
-            Map<String,Object> event=new HashMap<>();
-            event.put("paymentId",payment.getId());
-            event.put("accountNumber",payment.getAccountNumber());
-            event.put("amount",payment.getAmount());
-            event.put("razorpayPaymentId",razorpayPaymentId);
-            kafkaTemplate.send(PAYMENT_COMPLETED_TOPIC,payment.getId(),event);
+            PaymentCompletedEvent paymentCompletedEvent=new PaymentCompletedEvent(
+                    payment.getId(),
+                    razorpayPaymentId,
+                    payment.getAccountNumber(),
+                    payment.getAmount()
+
+            );
+            kafkaTemplate.send(PAYMENT_COMPLETED_TOPIC,payment.getId(),paymentCompletedEvent);
             log.info("Payment Completed :{}",payment.getId());
         }
         catch(Exception e){
@@ -137,12 +140,13 @@ public class PaymentService {
           payment.setFailureReason("Payment Failed via Razorpay");
           paymentRepository.save(payment);
 
-          Map<String, Object> event = new HashMap<>();
-          event.put("paymentId", payment.getId());
-          event.put("accountNumber", payment.getAccountNumber());
-          event.put("amount", payment.getAmount());
-          event.put("reason", "Payment Failed Via RazorPay");
-          kafkaTemplate.send(PAYMENT_FAILED_TOPIC, payment.getId(), event);
+          PaymentFailedEvent paymentFailedEvent=new PaymentFailedEvent(
+                  payment.getId(),
+                  payment.getAccountNumber(),
+                  payment.getAmount(),
+                  payment.getFailureReason()
+          );
+          kafkaTemplate.send(PAYMENT_FAILED_TOPIC, payment.getId(), paymentFailedEvent);
           log.info("Payment Failed :{}", payment.getId());
       }
       catch (Exception e){

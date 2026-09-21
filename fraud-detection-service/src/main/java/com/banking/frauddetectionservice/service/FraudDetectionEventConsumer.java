@@ -25,7 +25,7 @@ public class FraudDetectionEventConsumer {
     public void consumeTransactionInitiated(
             @Payload TransactionInitiatedEvent event
             ){
-        log.info("Recieved Transaction for Fraud Check : {}",event.transactionId());
+        log.info("Received Transaction for Fraud Check : {}",event.transactionId());
         try{
             fraudDetectionService.checkTransaction(event);
         }catch(Exception e){

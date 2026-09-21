@@ -1,5 +1,5 @@
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\FraudDetectedEvent.java
-C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\OTPGeneratedTopic.java
+C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\OTPGeneratedEvent.java
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\PaymentCompletedEvent.java
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\PaymentFailedEvent.java
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\TransactionCleanEvent.java

@@ -35,10 +35,10 @@ public class FraudDetectionService {
 
 
 
-    public void checkTransaction(TransactionInitiatedEvent event){
-        String transactionId=event.transactionId();
-        String senderAccountNumber=event.senderAccountNumber();
-        BigDecimal amount=event.amount();
+    public void checkTransaction(TransactionInitiatedEvent transactionInitiatedEvent){
+        String transactionId=transactionInitiatedEvent.transactionId();
+        String senderAccountNumber=transactionInitiatedEvent.senderAccountNumber();
+        BigDecimal amount=transactionInitiatedEvent.amount();
 
         //fetch real balance from account service
         BigDecimal senderBalance=accountServiceClient.getBalance(senderAccountNumber);
@@ -60,11 +60,8 @@ public class FraudDetectionService {
         else{
             //proceed with transaction
             log.info("Transaction Clean");
-            Map<String,Object> transactionCleanEvent=new HashMap<>();
-            transactionCleanEvent.put("transactionId",transactionId);
-            transactionCleanEvent.put("isFraud",false);
-            transactionCleanEvent.put("reason",null);
-            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC,transactionId,transactionCleanEvent);
+
+            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC,transactionId,transactionId);
 
         }
     }

@@ -1,6 +1,7 @@
 package com.banking.accountservice.service;
 
 import com.banking.accountservice.entity.Account;
+import com.banking.events.FraudDetectedEvent;
 import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,15 +39,15 @@ public class AccountEventConsumer {
         Consume Fraud Detected Event From Kafka
         Blocks The Account Debits
      */
-    @KafkaListener(topics="fraud-detected")
+    @KafkaListener(topics="fraud.detected")
     public void consumeFraudDetected(
-            @Payload Map<String,Object> payload
-    )
+            @Payload FraudDetectedEvent fraudDetectedEvent
+            )
     {
         try{
-            String accountNumber=(String) payload.get("accountNumber");
-            log.info("Fraud Detected -> Blocking Account : {}",accountNumber);
-            accountService.blockAccount(accountNumber);
+            String senderAccountNumber=fraudDetectedEvent.senderAccountNumber();
+            log.info("Fraud Detected -> Blocking Account : {}",senderAccountNumber);
+            accountService.blockAccount(senderAccountNumber);
         }catch(Exception e){
             log.error("Error in blocking account : {}",e.getMessage());
         }

@@ -1,6 +1,8 @@
 package com.banking.transactionservice.service;
 
 import com.banking.events.FraudDetectedEvent;
+import com.banking.events.TransactionInitiatedEvent;
+import com.banking.events.TransactionRefundedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.dto.TransferRequest;
@@ -8,7 +10,6 @@ import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
 import com.banking.events.TransactionCompletedEvent;
-import com.banking.transactionservice.event.TransactionInitiatedEvent;
 import com.banking.transactionservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +19,6 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -68,14 +68,14 @@ public class TransactionService {
 
         //publish event for fraud check
         //Saga Step 2:Publish For Fraud Check
-        TransactionInitiatedEvent event=new TransactionInitiatedEvent(
+        TransactionInitiatedEvent transactionInitiatedEvent=new TransactionInitiatedEvent(
           savedTransaction.getId(),
           savedTransaction.getSenderAccountNumber(),
           savedTransaction.getReceiverAccountNumber(),
           savedTransaction.getAmount(),
           savedTransaction.getDescription()
         );
-        kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC,savedTransaction.getId(),event);
+        kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC,savedTransaction.getId(),transactionInitiatedEvent);
         log.info("SAGA Step 2 :TransactionInitiatedEvent Published : {}",savedTransaction.getId());
 
         return mapToResponse(savedTransaction);
@@ -151,12 +151,13 @@ public class TransactionService {
         transactionRepository.save(transaction);
 
         //publish refund event-Notification service
-        Map<String,Object> refundEvent=new HashMap<>();
-        refundEvent.put("transactionId",transaction.getId());
-        refundEvent.put("amount",transaction.getAmount());
-        refundEvent.put("senderAccountNumber",transaction.getSenderAccountNumber());
-        refundEvent.put("reason",reason);
-        kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC,transaction.getId(),refundEvent);
+        TransactionRefundedEvent transactionRefundedEvent=new TransactionRefundedEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                transaction.getAmount(),
+                reason
+        );
+        kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC,transaction.getId(),transactionRefundedEvent);
         log.info("SAGA COMPENSATE COMPLETE-{} refunded to {}",
                 transaction.getAmount(),transaction.getSenderAccountNumber());
 

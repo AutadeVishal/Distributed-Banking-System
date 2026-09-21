@@ -1,9 +1,9 @@
 com\banking\events\FraudDetectedEvent.class
+com\banking\events\OTPGeneratedEvent.class
 com\banking\events\PaymentFailedEvent.class
 com\banking\events\TransactionCompletedEvent.class
 com\banking\events\TransactionRefundedEvent.class
 com\banking\events\PaymentCompletedEvent.class
 com\banking\events\TransactionCleanEvent.class
-com\banking\events\OTPGeneratedTopic.class
 com\banking\events\TransactionInitiatedEvent.class
 com\banking\events\VerificationRequiredEvent.class
