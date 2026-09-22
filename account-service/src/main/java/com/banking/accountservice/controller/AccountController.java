@@ -58,11 +58,6 @@ public class AccountController {
         return ResponseEntity.ok("Account Number Unlocked Successfully");
     }
 
-    /*
-        Saga step 1 :
-        Transaction Service calling when transfer initiated
-        deduct balance
-     */
     @PutMapping("/{accountNumber}/deduct")
     public ResponseEntity<String> deductBalance(
             @PathVariable String accountNumber,
@@ -73,12 +68,6 @@ public class AccountController {
         return ResponseEntity.ok("Balance Deducted Succesfully");
     }
 
-    /*
-        Saga Step 4: compensating transaction endpoint
-        Transaction Service Calling
-        1.fraud detected->refund sender (undo step 1)
-        2.transaction completed -> credit receiver
-     */
     @PutMapping("/{accountNumber}/credit")
     public ResponseEntity<String> creditBalance(
             @PathVariable String accountNumber,

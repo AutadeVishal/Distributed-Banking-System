@@ -26,8 +26,9 @@ public class NotificationService {
             String reason= otpGeneratedEvent.reason();
             sendAlert(senderAccountNumber,"VERIFICATION REQUIRED",
                     "Suspicious Activity Detected on your Account"+
-                    "Reason :%s .A transaction of %s is pending." +
-                            "Your OTP is :%s." +
+                    "Reason :"+reason+"." +
+                            "A transaction of "+amount+" is pending." +
+                            "Your OTP is : "+otp+
                             "Valid for 5 minutes."
                             );
 

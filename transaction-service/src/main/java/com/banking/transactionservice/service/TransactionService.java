@@ -133,7 +133,7 @@ public class TransactionService {
 
         kafkaTemplate.send(
                 TRANSACTION_INITIATED_TOPIC,
-                transaction.getId().toString(),
+                transaction.getId(),
                 event
         );
 
@@ -198,11 +198,17 @@ public class TransactionService {
     }
 
 
+    public void processCleanResult(String transactionId){
+        Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
+                .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
+        completeTransaction(transaction);
+    }
+
     private void completeTransaction(Transaction transaction){
         //debit
-       accountServiceClient.deductBalance(transaction.getSenderAccountNumber(),transaction.getAmount());
+        accountServiceClient.deductBalance(transaction.getSenderAccountNumber(),transaction.getAmount());
 
-       //credit to receiver
+        //credit to receiver
         accountServiceClient.creditBalance(transaction.getReceiverAccountNumber(),transaction.getAmount());
 
 
@@ -223,16 +229,10 @@ public class TransactionService {
         log.info("SAGA COMPLETE- transaction : {} completed ",transaction.getId());
     }
 
-    public void processCleanResult(String transactionId){
+    public TransactionResponse getTransaction(String transactionId){
         Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
                 .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
-        if(transaction.getTransactionStatus()!=TransactionStatus.PROCESSING){
-            log.warn("Transaction {} not COMPLETED -skipping ",transactionId);
-            return ;
-        }
-        completeTransaction(transaction);
-
-
+        return mapToResponse(transaction);
     }
 
 }
