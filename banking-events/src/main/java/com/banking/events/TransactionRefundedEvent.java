@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record TransactionRefundedEvent (
-        Long transactionId,
+        String transactionId,
         String senderAccountNumber,
         BigDecimal amount,
         String reason

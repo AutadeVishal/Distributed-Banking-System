@@ -26,6 +26,7 @@ public class AccountService {
         if(accountRepository.existsAccountByEmail((request.getEmail()))){
             throw new RuntimeException("Account Already Exists for Email :"+request.getEmail());
         }
+        String accountNumber=generateAccountNumber();
         Account account=Account.builder()
                 .accountHolderName(request.getAccountHolderName())
                 .email(request.getEmail())
@@ -33,7 +34,7 @@ public class AccountService {
                 .accountType(request.getAccountType())
                 .balance(request.getInitialDeposit())
                 .accountStatus(AccountStatus.ACTIVE)
-                .accountNumber(generateAccountNumber())
+                .accountNumber(accountNumber)
                 .dailyTransactionLimit(
                     request.getAccountType()== AccountType.SAVINGS
                     ? new BigDecimal(100000)
@@ -59,13 +60,21 @@ public class AccountService {
     /*
     called by fraud detection service in kafka
      */
-    public void blockAccount(String accountNumber){
+    public void lockAccount(String accountNumber){
         log.info("Blocking Account {}",accountNumber);
         Account account=accountRepository.findByAccountNumber(accountNumber)
                 .orElseThrow(()->new RuntimeException("Account Not Found"));
         account.setAccountStatus(AccountStatus.BLOCKED);
         accountRepository.save(account);
         log.info("Account Blocked:{}",account.getAccountNumber());
+    }
+    public void unlockAccount(String accountNumber){
+        log.info("Unlocking Account {}",accountNumber);
+        Account account=accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(()->new RuntimeException("Account Not Found"));
+        account.setAccountStatus(AccountStatus.ACTIVE);
+        accountRepository.save(account);
+        log.info("Account unlocked:{}",account.getAccountNumber());
     }
 
     /*

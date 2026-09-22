@@ -5,7 +5,7 @@ import java.util.UUID;
 
 
 public record TransactionCompletedEvent(
-         Long transactionId,
+         String transactionId,
          String senderAccountNumber,
          String receiverAccountNumber,
          BigDecimal amount,

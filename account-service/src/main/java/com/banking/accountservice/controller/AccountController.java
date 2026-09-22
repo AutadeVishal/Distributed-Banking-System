@@ -42,12 +42,20 @@ public class AccountController {
         return ResponseEntity.ok(balance);
     }
 
-    @PutMapping("/{accountNumber}/block")
-    public ResponseEntity<String> blockAccount(
+    @PutMapping("/{accountNumber}/lock")
+    public ResponseEntity<String> lockAccount(
             @PathVariable String accountNumber
     ){
-        accountService.blockAccount(accountNumber);
-        return ResponseEntity.ok("Account Number Blocked Successfully");
+        accountService.lockAccount(accountNumber);
+        return ResponseEntity.ok("Account Number locked Successfully");
+    }
+
+    @PutMapping("/{accountNumber}/unlock")
+    public ResponseEntity<String> unLockAccount(
+            @PathVariable String accountNumber
+    ){
+        accountService.unlockAccount(accountNumber);
+        return ResponseEntity.ok("Account Number Unlocked Successfully");
     }
 
     /*

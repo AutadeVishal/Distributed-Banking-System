@@ -28,7 +28,7 @@ public class IdempotencyRecord {
     private String idempotencyKey;
 
     @Column(nullable = false)
-    private Long transactionId;
+    private String transactionId;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

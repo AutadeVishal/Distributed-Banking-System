@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record OTPGeneratedEvent(
-        Long   transactionId,
+        String   transactionId,
         String senderAccountNumber,
         String reason,
         String otp,

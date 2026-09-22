@@ -38,7 +38,7 @@ public class TransactionEventConsumer {
             ){
         try{
             String transactionId=verificationRequiredEvent.transactionId();
-            String senderAccountNumber=verificationRequiredEvent.senderAcountNumber();
+            String senderAccountNumber=verificationRequiredEvent.senderAccountNumber();
             String reason=verificationRequiredEvent.reason();
             BigDecimal amount=verificationRequiredEvent.amount();
             log.info("Verification Required - transaction: {} reason : {}",transactionId,reason);
