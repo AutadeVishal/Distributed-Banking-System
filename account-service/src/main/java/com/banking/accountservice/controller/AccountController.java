@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 
 @RestController
-@RequestMapping("/api/v1/accounts")
+@RequestMapping("/api/v1/account")
 @Slf4j
 @RequiredArgsConstructor
 public class AccountController {
@@ -61,7 +61,7 @@ public class AccountController {
     @PutMapping("/{accountNumber}/deduct")
     public ResponseEntity<String> deductBalance(
             @PathVariable String accountNumber,
-            @RequestParam BigDecimal amount
+            @RequestParam("amount") BigDecimal amount
     )
     {
         accountService.deductBalance(accountNumber,amount);
@@ -71,7 +71,7 @@ public class AccountController {
     @PutMapping("/{accountNumber}/credit")
     public ResponseEntity<String> creditBalance(
             @PathVariable String accountNumber,
-            @RequestParam BigDecimal amount
+            @RequestParam("amount") BigDecimal amount
     ){
         accountService.creditBalance(accountNumber,amount);
         return ResponseEntity.ok("Balance Credited Successfully");

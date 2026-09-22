@@ -9,6 +9,7 @@ import com.banking.accountservice.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
@@ -81,6 +82,7 @@ public class AccountService {
     deduct balance from sender
     called by transaction service
      */
+    @Transactional
     public  void deductBalance(String accountNumber,BigDecimal amount){
         log.info("Deducting Balance {} from Account {} ",amount,accountNumber);
         Account account=accountRepository.findByAccountNumber(accountNumber)
@@ -100,6 +102,7 @@ public class AccountService {
     /*
         called by transaction service via kafka
      */
+    @Transactional
     public void creditBalance(String accountNumber,BigDecimal amount){
         log.info("Crediting  Balance {} to Account {} ",amount,accountNumber);
         Account account=accountRepository.findByAccountNumber(accountNumber)

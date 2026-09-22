@@ -50,14 +50,12 @@ This project mixes three communication patterns:
 ### How the flow works in practice
 
 1. The client creates a transfer request through the API Gateway.
-2. The Transaction Service immediately performs the sender debit in the Account Service.
-3. A transaction record is created and a Kafka event is emitted for fraud review.
-4. Fraud Detection Service evaluates the transfer using Redis counters and current account balance.
-5. If the transfer is valid, the transaction is completed and the receiver is credited.
-6. If the transfer looks risky, verification is required and a one-time OTP is created.
-7. The user verifies the OTP, and only then is the transfer finalized.
-8. If verification fails, the system compensates by refunding the sender and blocking the account if needed.
-9. Notification Service consumes these Kafka events and triggers alerts to the user.
+2. The Transaction Service creates a processing transaction record and emits an event for fraud review.
+3. Fraud Detection Service evaluates the transfer using Redis counters and the current account balance.
+4. If the transfer looks risky, verification is required and a one-time OTP is created.
+5. The user verifies the OTP when required; otherwise the clean result continues automatically.
+6. The Transaction Service debits the sender, credits the receiver, and marks the transaction completed.
+7. Notification Service consumes these Kafka events and triggers alerts to the user.
 
 
 

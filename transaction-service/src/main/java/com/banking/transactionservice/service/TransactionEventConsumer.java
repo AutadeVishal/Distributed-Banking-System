@@ -1,6 +1,7 @@
 package com.banking.transactionservice.service;
 
 import com.banking.events.OTPGeneratedEvent;
+import com.banking.events.TransactionCleanEvent;
 import com.banking.events.VerificationRequiredEvent;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
@@ -42,7 +43,7 @@ public class TransactionEventConsumer {
             String reason=verificationRequiredEvent.reason();
             BigDecimal amount=verificationRequiredEvent.amount();
             log.info("Verification Required - transaction: {} reason : {}",transactionId,reason);
-            Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
+            Transaction transaction=transactionRepository.findById(transactionId)
                     .orElseThrow(()->new RuntimeException("Transaction Not Found:"+transactionId));
 
             if(transaction.getTransactionStatus()!= TransactionStatus.PROCESSING){
@@ -75,7 +76,8 @@ public class TransactionEventConsumer {
 
 
         }catch(Exception e){
-            log.error("Error handeling verification required :{}",e.getMessage());
+            log.error("Error handling verification required event", e);
+            throw e;
         }
     }
 
@@ -83,14 +85,14 @@ public class TransactionEventConsumer {
 
     @KafkaListener(topics = "fraud.check.clean")
     public void consumeFraudCheckClean(
-            @Payload String transactionId
+            @Payload TransactionCleanEvent cleanEvent
     ){
         try{
-            transactionService.processCleanResult(transactionId);
+            transactionService.processCleanResult(cleanEvent.transactionId());
 
         }catch(Exception e){
-            log.error("Error in processing fraud check clean result :{}",e.getMessage());
-
+            log.error("Error processing fraud check clean result event", e);
+            throw e;
         }
     }
 }

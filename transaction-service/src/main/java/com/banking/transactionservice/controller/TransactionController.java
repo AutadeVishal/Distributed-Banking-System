@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/transactions")
+@RequestMapping("/api/v1/transaction")
 @Slf4j
 @RequiredArgsConstructor
 public class TransactionController {
@@ -43,10 +43,10 @@ public class TransactionController {
         return ResponseEntity.ok(transactionService.getTransactionHistory(accountNumber));
     }
 
-    @PostMapping("/{transactionId}/verifyOTP")
+    @PostMapping("/{transactionId}/verify-otp")
     public ResponseEntity<TransactionResponse> verifyOTP(
             @PathVariable String transactionId,
-            @RequestParam String otp
+            @RequestParam("otp") String otp
     )
     {
         log.info("OTP and Verification Request - Transaction Id : {} ",transactionId);

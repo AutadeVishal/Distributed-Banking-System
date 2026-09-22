@@ -24,7 +24,7 @@ spring:
             - id: transaction-service
               uri: http://transaction-service:8082
               predicates:
-                - Path=/api/v1/transactions/**
+                - Path=/api/v1/transaction/**
               filters:
                 - name: RequestRateLimiter
                   args:
@@ -35,7 +35,7 @@ spring:
             - id: payment-service
               uri: http://payment-service:8083
               predicates:
-                - Path=/api/v1/payments/**
+                - Path=/api/v1/payment/**
               filters:
                 - name: RequestRateLimiter
                   args:

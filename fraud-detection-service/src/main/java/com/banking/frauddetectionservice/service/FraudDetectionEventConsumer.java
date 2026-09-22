@@ -1,7 +1,6 @@
 package com.banking.frauddetectionservice.service;
 
 import com.banking.events.TransactionInitiatedEvent;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -29,7 +28,8 @@ public class FraudDetectionEventConsumer {
         try{
             fraudDetectionService.checkTransaction(event);
         }catch(Exception e){
-
+            log.error("Error processing transaction fraud check event", e);
+            throw e;
         }
     }
 }

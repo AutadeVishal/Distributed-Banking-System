@@ -1,6 +1,7 @@
 package com.banking.frauddetectionservice.service;
 
 import com.banking.events.TransactionInitiatedEvent;
+import com.banking.events.TransactionCleanEvent;
 import com.banking.events.VerificationRequiredEvent;
 import com.banking.frauddetectionservice.client.AccountServiceClient;
 import com.banking.frauddetectionservice.modal.FraudCheckResult;
@@ -61,7 +62,12 @@ public class FraudDetectionService {
             //proceed with transaction
             log.info("Transaction Clean");
 
-            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC,transactionId,transactionId);
+            TransactionCleanEvent cleanEvent = new TransactionCleanEvent(
+                    transactionId,
+                    false,
+                    null
+            );
+            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC,transactionId,cleanEvent);
 
         }
     }

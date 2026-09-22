@@ -1,8 +1,6 @@
 package com.banking.transactionservice.service;
 
-import com.banking.events.FraudDetectedEvent;
 import com.banking.events.TransactionInitiatedEvent;
-import com.banking.events.TransactionRefundedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.dto.TransferRequest;
@@ -25,7 +23,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -153,6 +150,7 @@ public class TransactionService {
     }
     private TransactionResponse mapToResponse(Transaction transaction){
         return TransactionResponse.builder()
+                .transactionId(transaction.getId())
                 .referenceNumber(transaction.getReferenceNumber())
                 .senderAccountNumber(transaction.getSenderAccountNumber())
                 .receiverAccountNumber(transaction.getReceiverAccountNumber())
@@ -168,7 +166,7 @@ public class TransactionService {
     }
     public TransactionResponse verifyOTP(String transactionId,String otp){
         log.info("OTP Verification for the transaction:{}",transactionId);
-        Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
+        Transaction transaction=transactionRepository.findById(transactionId)
                 .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
         String otpKey="verification:otp"+transactionId;
         String storedOtp=(String)redisTemplate.opsForValue().get(otpKey);
@@ -199,7 +197,7 @@ public class TransactionService {
 
 
     public void processCleanResult(String transactionId){
-        Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
+        Transaction transaction=transactionRepository.findById(transactionId)
                 .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
         completeTransaction(transaction);
     }
@@ -230,7 +228,7 @@ public class TransactionService {
     }
 
     public TransactionResponse getTransaction(String transactionId){
-        Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
+        Transaction transaction=transactionRepository.findById(transactionId)
                 .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
         return mapToResponse(transaction);
     }
