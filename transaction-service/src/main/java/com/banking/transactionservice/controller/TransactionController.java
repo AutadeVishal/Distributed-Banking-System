@@ -22,10 +22,11 @@ public class TransactionController {
 
     @PostMapping("/transfer")
     public ResponseEntity<TransactionResponse> transfer(
-            @Valid @RequestBody TransferRequest request
+            @Valid @RequestBody TransferRequest request,
+            @RequestHeader("Idempotency-Key") String idempotencyKey
             )
     {
-        return ResponseEntity.status(HttpStatus.CREATED).body(transactionService.transfer(request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(transactionService.initiateTransaction(request, idempotencyKey));
     }
 
     @GetMapping("/{transactionId}")

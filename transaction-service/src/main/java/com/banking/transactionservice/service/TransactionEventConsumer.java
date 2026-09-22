@@ -42,7 +42,7 @@ public class TransactionEventConsumer {
             String reason=verificationRequiredEvent.reason();
             BigDecimal amount=verificationRequiredEvent.amount();
             log.info("Verification Required - transaction: {} reason : {}",transactionId,reason);
-            Transaction transaction=transactionRepository.findById(transactionId)
+            Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
                     .orElseThrow(()->new RuntimeException("Transaction Not Found:"+transactionId));
 
             if(transaction.getTransactionStatus()!= TransactionStatus.PROCESSING){

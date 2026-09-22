@@ -6,21 +6,27 @@ import com.banking.events.TransactionRefundedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.dto.TransferRequest;
+import com.banking.transactionservice.entity.IdempotencyRecord;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
 import com.banking.events.TransactionCompletedEvent;
+import com.banking.transactionservice.repository.IdempotencyRepository;
 import com.banking.transactionservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -37,57 +43,113 @@ public class TransactionService {
     private static final String FRAUD_DETECTED_TOPIC="fraud.detected";
     private final KafkaTemplate<String,Object> kafkaTemplate;
     private final RedisTemplate<Object, Object> redisTemplate;
+    private final IdempotencyRepository idempotencyRepository;
 
-    /*
-        Saga Step 1
-        initiate transfer
-        deduct from sender
-        save transaction as processing
-        publish event to kafka for fraud check
-        returns
-     */
-    public TransactionResponse transfer(TransferRequest request){
-        log.info("SAGA START - Transfer Account Number : {}->{} amount : {} ",request.getReceiverAccountNumber(),request.getSenderAccountNumber(),request.getAmount());
+    @Transactional
+    public TransactionResponse initiateTransaction(TransferRequest request, String idempotencyKey){
+        log.info(
+                "SAGA START - Transfer amount: {} from: {} to: {}",
+                request.getAmount(),
+                request.getSenderAccountNumber(),
+                request.getReceiverAccountNumber()
+        );
 
-        //deduct from sender
-        accountServiceClient.deductBalance(request.getSenderAccountNumber(),
-                request.getAmount());
+        Optional<IdempotencyRecord> existing =
+                idempotencyRepository.findByIdempotencyKey(idempotencyKey);
 
-        //sve transaction as processing
-        Transaction transaction=Transaction.builder()
+        if (existing.isPresent()) {
+            //if already exists then return existing
+            //will not work for parallel or concurrent retries because both will skip this block after reading not existing
+            Transaction transaction =
+                    transactionRepository
+                            .findById(existing.get().getTransactionId())
+                            .orElseThrow(() ->
+                                    new RuntimeException("Transaction not found"));
+
+            log.info(
+                    "Existing transaction found for idempotency key: {}",
+                    idempotencyKey
+            );
+
+            return mapToResponse(transaction);
+        }
+
+        String referenceNumber = generateReferenceNumber();
+
+        Transaction transaction = Transaction.builder()
+                .referenceNumber(referenceNumber)
                 .senderAccountNumber(request.getSenderAccountNumber())
                 .receiverAccountNumber(request.getReceiverAccountNumber())
                 .amount(request.getAmount())
+                .description(request.getDescription())
                 .transactionType(TransactionType.TRANSFER)
                 .transactionStatus(TransactionStatus.PROCESSING)
-                .description(request.getDescription())
-                .referenceNumber(UUID.randomUUID().toString())
                 .build();
-        Transaction savedTransaction=transactionRepository.save(transaction);
-        log.info("Transaction saved as PROCESSING : {}",savedTransaction.getId());
 
-        //publish event for fraud check
-        //Saga Step 2:Publish For Fraud Check
-        TransactionInitiatedEvent transactionInitiatedEvent=new TransactionInitiatedEvent(
-          savedTransaction.getId(),
-          savedTransaction.getSenderAccountNumber(),
-          savedTransaction.getReceiverAccountNumber(),
-          savedTransaction.getAmount(),
-          savedTransaction.getDescription()
+        //issues here:
+        //completely different parallel transaction could generate same reference number so need to handle that using retry otherwise one need to fail
+        //top of that negligible chance of two same transaction could have same reference number then one will fail here itself
+        Transaction savedTransaction =
+                transactionRepository.save(transaction);
+
+        // issues here:
+        //in two concurrent requests one transaction will be filled with idempotent record
+        //other will fail(but it didn't actually fail) so need to handle that by returning existing transaction
+        //don't know for now should i delete the duplicate transaction or not while returning existing one who got idempotent record
+        IdempotencyRecord record = IdempotencyRecord.builder()
+                .idempotencyKey(idempotencyKey)
+                .transactionId(savedTransaction.getId())
+                .build();
+
+        idempotencyRepository.save(record);
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+
+                    @Override
+                    public void afterCommit() {
+                        startSaga(savedTransaction);
+                    }
+                }
         );
-        kafkaTemplate.send(TRANSACTION_INITIATED_TOPIC,savedTransaction.getId(),transactionInitiatedEvent);
-        log.info("SAGA Step 2 :TransactionInitiatedEvent Published : {}",savedTransaction.getId());
+        log.info("Transaction saved as PROCESSING : {}",savedTransaction.getId());
 
         return mapToResponse(savedTransaction);
 
     }
-
-    public TransactionResponse getTransaction(String transactionId){
-        return mapToResponse(transactionRepository.findById(transactionId)
-                .orElseThrow(
-                        ()->new RuntimeException("Transaction Not Found")
-                ));
+    String generateReferenceNumber() {
+        return  "TXN-" + UUID.randomUUID();
     }
+
+    private void startSaga(Transaction transaction) {
+
+
+        accountServiceClient.deductBalance(
+                transaction.getSenderAccountNumber(),
+                transaction.getAmount()
+        );
+
+        TransactionInitiatedEvent event =
+                new TransactionInitiatedEvent(
+                        transaction.getId(),
+                        transaction.getSenderAccountNumber(),
+                        transaction.getReceiverAccountNumber(),
+                        transaction.getAmount(),
+                        transaction.getDescription()
+                );
+
+        kafkaTemplate.send(
+                TRANSACTION_INITIATED_TOPIC,
+                transaction.getId().toString(),
+                event
+        );
+
+        log.info(
+                "SAGA - TransactionInitiatedEvent published: {}",
+                transaction.getId()
+        );
+    }
+
+
 
     public List<TransactionResponse> getTransactionHistory(String accountNumber){
         return transactionRepository.findBySenderAccountNumberOrderByCreatedAtDesc(accountNumber)
@@ -98,13 +160,13 @@ public class TransactionService {
     private TransactionResponse mapToResponse(Transaction transaction){
         return TransactionResponse.builder()
                 .id(transaction.getId())
+                .referenceNumber(transaction.getReferenceNumber())
                 .senderAccountNumber(transaction.getSenderAccountNumber())
                 .receiverAccountNumber(transaction.getReceiverAccountNumber())
                 .amount(transaction.getAmount())
+                .description(transaction.getDescription())
                 .transactionType(transaction.getTransactionType())
                 .transactionStatus(transaction.getTransactionStatus())
-                .description(transaction.getDescription())
-                .referenceNumber(transaction.getReferenceNumber())
                 .failureReason(transaction.getFailureReason())
                 .createdAt(transaction.getCreatedAt())
                 .completedAt(transaction.getCompletedAt())
@@ -113,7 +175,7 @@ public class TransactionService {
     }
     public TransactionResponse verifyOTP(String transactionId,String otp){
         log.info("OTP Verification for the transaction:{}",transactionId);
-        Transaction transaction=transactionRepository.findById(transactionId)
+        Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
                 .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
         String otpKey="verification:otp"+transactionId;
         String storedOtp=(String)redisTemplate.opsForValue().get(otpKey);
@@ -157,7 +219,7 @@ public class TransactionService {
                 transaction.getAmount(),
                 reason
         );
-        kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC,transaction.getId(),transactionRefundedEvent);
+        kafkaTemplate.send(TRANSACTION_REFUNDED_TOPIC,transaction.getId().toString(),transactionRefundedEvent);
         log.info("SAGA COMPENSATE COMPLETE-{} refunded to {}",
                 transaction.getAmount(),transaction.getSenderAccountNumber());
 
@@ -190,11 +252,11 @@ public class TransactionService {
                 transaction.getDescription()
         );
 
-        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,transaction.getId(),event);
+        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,transaction.getId().toString(),event);
         log.info("SAGA COMPLETE- transaction : {} completed ",transaction.getId());
     }
     public void processCleanResult(String transactionId){
-        Transaction transaction=transactionRepository.findById(transactionId)
+        Transaction transaction=transactionRepository.findById(Long.valueOf(transactionId))
                 .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
         if(transaction.getTransactionStatus()!=TransactionStatus.PROCESSING){
             log.warn("Transaction {} not COMPLETED -skipping ",transactionId);

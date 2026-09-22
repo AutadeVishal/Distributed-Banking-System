@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name="transactions")
@@ -18,8 +19,11 @@ import java.time.LocalDateTime;
 @Builder
 public class Transaction {
     @Id
-    @GeneratedValue(strategy= GenerationType.UUID)
-    private String id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true, updatable = false)
+    private String referenceNumber;
 
     @Column(nullable = false)
     private String senderAccountNumber;
@@ -41,8 +45,6 @@ public class Transaction {
     private TransactionStatus transactionStatus;
 
     private String failureReason;
-
-    private String referenceNumber;
 
     @CreationTimestamp
     private LocalDateTime createdAt;
