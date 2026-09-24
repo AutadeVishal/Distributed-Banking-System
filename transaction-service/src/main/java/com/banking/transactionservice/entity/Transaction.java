@@ -9,20 +9,26 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
-@Table(name="transactions")
+@Table(name = "transactions")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
 public class Transaction {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private String id;
 
-    @Column(nullable = false, unique = true, updatable = false)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(
+            name = "reference_number",
+            nullable = false,
+            unique = true,
+            updatable = false,
+            length = 16
+    )
     private String referenceNumber;
 
     @Column(nullable = false)
@@ -31,7 +37,11 @@ public class Transaction {
     @Column(nullable = false)
     private String receiverAccountNumber;
 
-    @Column(nullable = false,precision = 15,scale=2)
+    @Column(
+            nullable = false,
+            precision = 15,
+            scale = 2
+    )
     private BigDecimal amount;
 
     private String description;

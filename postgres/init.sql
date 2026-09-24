@@ -20,23 +20,75 @@ CREATE TABLE IF NOT EXISTS accounts (
 
 \connect transactions_db
 
+CREATE SEQUENCE IF NOT EXISTS transaction_reference_seq
+    START WITH 100000
+    INCREMENT BY 1
+    MINVALUE 100000
+    MAXVALUE 999999999999
+    NO CYCLE;
+
+
 CREATE TABLE IF NOT EXISTS transactions (
-    id VARCHAR(255) PRIMARY KEY,
-    sender_account_number VARCHAR(255) NOT NULL,
+                                            id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+                                            sender_account_number VARCHAR(255) NOT NULL,
+
     receiver_account_number VARCHAR(255) NOT NULL,
+
     amount NUMERIC(15, 2) NOT NULL,
+
     description VARCHAR(255),
-    transaction_type VARCHAR(32) NOT NULL CHECK (transaction_type IN ('DEPOSIT', 'WITHDRAWAL', 'PAYMENT', 'TRANSFER')),
-    transaction_status VARCHAR(32) NOT NULL CHECK (transaction_status IN ('PENDING', 'PROCESSING', 'COMPLETED', 'PENDING_VERIFICATION', 'FAILED', 'FLAGGED')),
+
+    transaction_type VARCHAR(32) NOT NULL
+    CHECK (
+              transaction_type IN (
+              'DEPOSIT',
+              'WITHDRAWAL',
+              'PAYMENT',
+              'TRANSFER'
+                                  )
+    ),
+
+    transaction_status VARCHAR(32) NOT NULL
+    CHECK (
+              transaction_status IN (
+              'PENDING',
+              'PROCESSING',
+              'COMPLETED',
+              'PENDING_VERIFICATION',
+              'FAILED',
+              'FLAGGED'
+                                    )
+    ),
+
     failure_reason VARCHAR(255),
-    reference_number VARCHAR(255),
+
+    reference_number VARCHAR(16) NOT NULL UNIQUE,
+
     created_at TIMESTAMP(6),
+
     completed_at TIMESTAMP(6)
-);
+    );
+
 
 CREATE INDEX IF NOT EXISTS idx_transactions_sender_created
-    ON transactions (sender_account_number, created_at DESC);
+    ON transactions (
+    sender_account_number,
+    created_at DESC
+    );
 
+
+CREATE TABLE IF NOT EXISTS idempotency_records (
+                                                   id BIGSERIAL PRIMARY KEY,
+
+                                                   idempotency_key VARCHAR(255)
+    NOT NULL UNIQUE,
+
+    transaction_id BIGINT
+    NOT NULL UNIQUE,
+
+    created_at TIMESTAMP(6)
+    );
 \connect payments_db
 
 CREATE TABLE IF NOT EXISTS payments (

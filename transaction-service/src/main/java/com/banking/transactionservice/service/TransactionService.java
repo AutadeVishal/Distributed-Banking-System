@@ -1,5 +1,6 @@
 package com.banking.transactionservice.service;
 
+import com.banking.events.TransactionCompletedEvent;
 import com.banking.events.TransactionInitiatedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.TransactionResponse;
@@ -8,7 +9,6 @@ import com.banking.transactionservice.entity.IdempotencyRecord;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
-import com.banking.events.TransactionCompletedEvent;
 import com.banking.transactionservice.repository.IdempotencyRepository;
 import com.banking.transactionservice.repository.TransactionRepository;
 import lombok.RequiredArgsConstructor;
@@ -20,30 +20,36 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
-
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class TransactionService {
+
     private final TransactionRepository transactionRepository;
     private final AccountServiceClient accountServiceClient;
-    private static final String TRANSACTION_INITIATED_TOPIC="transaction.initiated";
-    private static final String TRANSACTION_COMPLETED_TOPIC="transaction.completed";
-    private static final String TRANSACTION_REFUNDED_TOPIC="transaction.refunded";
-    private static final String FRAUD_DETECTED_TOPIC="fraud.detected";
-    private final KafkaTemplate<String,Object> kafkaTemplate;
+    private final KafkaTemplate<String, Object> kafkaTemplate;
     private final RedisTemplate<Object, Object> redisTemplate;
     private final IdempotencyRepository idempotencyRepository;
 
+    private static final String TRANSACTION_INITIATED_TOPIC =
+            "transaction.initiated";
+
+    private static final String TRANSACTION_COMPLETED_TOPIC =
+            "transaction.completed";
+
+    private static final String FRAUD_DETECTED_TOPIC =
+            "fraud.detected";
+
     @Transactional
-    public TransactionResponse initiateTransaction(TransferRequest request, String idempotencyKey){
+    public TransactionResponse initiateTransaction(
+            TransferRequest request,
+            String idempotencyKey
+    ) {
+
         log.info(
                 "SAGA START - Transfer amount: {} from: {} to: {}",
                 request.getAmount(),
@@ -51,54 +57,115 @@ public class TransactionService {
                 request.getReceiverAccountNumber()
         );
 
-        Optional<IdempotencyRecord> existing =
-                idempotencyRepository.findByIdempotencyKey(idempotencyKey);
+        IdempotencyRecord existingRecord =
+                idempotencyRepository
+                        .findByIdempotencyKey(idempotencyKey)
+                        .orElse(null);
 
-        if (existing.isPresent()) {
-            //if already exists then return existing
-            //will not work for parallel or concurrent retries because both will skip this block after reading not existing
-            Transaction transaction =
+        if (existingRecord != null) {
+
+            Transaction existingTransaction =
                     transactionRepository
-                            .findById(existing.get().getTransactionId())
+                            .findById(existingRecord.getTransactionId())
                             .orElseThrow(() ->
-                                    new RuntimeException("Transaction not found"));
+                                    new IllegalStateException(
+                                            "Transaction not found for idempotency key: "
+                                                    + idempotencyKey
+                                    )
+                            );
 
             log.info(
-                    "Existing transaction found for idempotency key: {}",
+                    "Returning existing transaction for idempotency key: {}",
                     idempotencyKey
             );
 
-            return mapToResponse(transaction);
+            return mapToResponse(existingTransaction);
         }
 
-        String referenceNumber = generateReferenceNumber();
 
-        Transaction transaction = Transaction.builder()
-                .referenceNumber(referenceNumber)
-                .senderAccountNumber(request.getSenderAccountNumber())
-                .receiverAccountNumber(request.getReceiverAccountNumber())
-                .amount(request.getAmount())
-                .description(request.getDescription())
-                .transactionType(TransactionType.TRANSFER)
-                .transactionStatus(TransactionStatus.PROCESSING)
-                .build();
+        Long referenceSequence =
+                transactionRepository.getNextReferenceNumber();
 
-        //issues here:
-        //completely different parallel transaction could generate same reference number so need to handle that using retry otherwise one need to fail
-        //top of that negligible chance of two same transaction could have same reference number then one will fail here itself
+        String referenceNumber =
+                "TXN-" + String.format(
+                        "%012d",
+                        referenceSequence
+                );
+
+
+        Transaction transaction =
+                Transaction.builder()
+                        .referenceNumber(referenceNumber)
+                        .senderAccountNumber(
+                                request.getSenderAccountNumber()
+                        )
+                        .receiverAccountNumber(
+                                request.getReceiverAccountNumber()
+                        )
+                        .amount(request.getAmount())
+                        .description(request.getDescription())
+                        .transactionType(TransactionType.TRANSFER)
+                        .transactionStatus(
+                                TransactionStatus.PROCESSING
+                        )
+                        .build();
+
+
         Transaction savedTransaction =
-                transactionRepository.save(transaction);
+                transactionRepository.saveAndFlush(transaction);
 
-        // issues here:
-        //in two concurrent requests one transaction will be filled with idempotent record
-        //other will fail(but it didn't actually fail) so need to handle that by returning existing transaction
-        //don't know for now should i delete the duplicate transaction or not while returning existing one who got idempotent record
-        IdempotencyRecord record = IdempotencyRecord.builder()
-                .idempotencyKey(idempotencyKey)
-                .transactionId(savedTransaction.getId())
-                .build();
+        /*
+          Atomic idempotency claim:
+          1 -> this request won.
+          0 -> another request with the same idempotency key won.
+         */
+        int claimed =
+                idempotencyRepository.claim(
+                        idempotencyKey,
+                        savedTransaction.getId()
+                );
 
-        idempotencyRepository.save(record);
+        if (claimed == 0) {
+
+            /*
+              This transaction was created by the losing
+              concurrent request, so remove it.
+             */
+            transactionRepository.delete(savedTransaction);
+
+            IdempotencyRecord winningRecord =
+                    idempotencyRepository
+                            .findByIdempotencyKey(idempotencyKey)
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "Idempotency record not found after claim conflict"
+                                    )
+                            );
+
+            Transaction winningTransaction =
+                    transactionRepository
+                            .findById(
+                                    winningRecord.getTransactionId()
+                            )
+                            .orElseThrow(() ->
+                                    new IllegalStateException(
+                                            "Winning transaction not found"
+                                    )
+                            );
+
+            log.info(
+                    "Concurrent duplicate request detected. " +
+                            "Returning transaction: {}",
+                    winningTransaction.getId()
+            );
+
+            return mapToResponse(winningTransaction);
+        }
+
+        /*
+          Only the request that successfully claimed
+          the idempotency key starts the Saga.
+         */
         TransactionSynchronizationManager.registerSynchronization(
                 new TransactionSynchronization() {
 
@@ -108,20 +175,20 @@ public class TransactionService {
                     }
                 }
         );
-        log.info("Transaction saved as PROCESSING : {}",savedTransaction.getId());
+
+        log.info(
+                "Transaction saved as PROCESSING: {}",
+                savedTransaction.getId()
+        );
 
         return mapToResponse(savedTransaction);
-
-    }
-    String generateReferenceNumber() {
-        return  "TXN-" + UUID.randomUUID();
     }
 
     private void startSaga(Transaction transaction) {
 
         TransactionInitiatedEvent event =
                 new TransactionInitiatedEvent(
-                        transaction.getId(),
+                        String.valueOf(transaction.getId()),
                         transaction.getSenderAccountNumber(),
                         transaction.getReceiverAccountNumber(),
                         transaction.getAmount(),
@@ -130,7 +197,7 @@ public class TransactionService {
 
         kafkaTemplate.send(
                 TRANSACTION_INITIATED_TOPIC,
-                transaction.getId(),
+                String.valueOf(transaction.getId()),
                 event
         );
 
@@ -140,20 +207,36 @@ public class TransactionService {
         );
     }
 
+    public List<TransactionResponse> getTransactionHistory(
+            String accountNumber
+    ) {
 
-
-    public List<TransactionResponse> getTransactionHistory(String accountNumber){
-        return transactionRepository.findBySenderAccountNumberOrderByCreatedAtDesc(accountNumber)
+        return transactionRepository
+                .findBySenderAccountNumberOrderByCreatedAtDesc(
+                        accountNumber
+                )
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
     }
-    private TransactionResponse mapToResponse(Transaction transaction){
+
+    private TransactionResponse mapToResponse(
+            Transaction transaction
+    ) {
+
         return TransactionResponse.builder()
-                .transactionId(transaction.getId())
-                .referenceNumber(transaction.getReferenceNumber())
-                .senderAccountNumber(transaction.getSenderAccountNumber())
-                .receiverAccountNumber(transaction.getReceiverAccountNumber())
+                .transactionId(
+                        String.valueOf(transaction.getId())
+                )
+                .referenceNumber(
+                        transaction.getReferenceNumber()
+                )
+                .senderAccountNumber(
+                        transaction.getSenderAccountNumber()
+                )
+                .receiverAccountNumber(
+                        transaction.getReceiverAccountNumber()
+                )
                 .amount(transaction.getAmount())
                 .description(transaction.getDescription())
                 .transactionType(transaction.getTransactionType())
@@ -162,75 +245,167 @@ public class TransactionService {
                 .createdAt(transaction.getCreatedAt())
                 .completedAt(transaction.getCompletedAt())
                 .build();
-
     }
-    public TransactionResponse verifyOTP(String transactionId,String otp){
-        log.info("OTP Verification for the transaction:{}",transactionId);
-        Transaction transaction=transactionRepository.findById(transactionId)
-                .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
-        String otpKey="verification:otp"+transactionId;
-        String storedOtp=(String)redisTemplate.opsForValue().get(otpKey);
-        if(storedOtp==null){
-            //OTP Expired
-            log.warn("OTP Expired for Transaction : {}",transactionId);
+
+    public TransactionResponse verifyOTP(
+            String transactionId,
+            String otp
+    ) {
+
+        log.info(
+                "OTP Verification for the transaction:{}",
+                transactionId
+        );
+
+        Long id = Long.valueOf(transactionId);
+
+        Transaction transaction =
+                transactionRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Transaction : "
+                                                + transactionId
+                                                + " Not Found"
+                                )
+                        );
+
+        String otpKey =
+                "verification:otp" + transactionId;
+
+        String storedOtp =
+                (String) redisTemplate
+                        .opsForValue()
+                        .get(otpKey);
+
+        if (storedOtp == null) {
+
+            log.warn(
+                    "OTP Expired for Transaction : {}",
+                    transactionId
+            );
+
             transaction.setFailureReason("OTP Expired");
-            transaction.setTransactionStatus(TransactionStatus.FAILED);
+            transaction.setTransactionStatus(
+                    TransactionStatus.FAILED
+            );
+
             transactionRepository.save(transaction);
+
             return mapToResponse(transaction);
         }
-        if(!storedOtp.equals(otp)){
-            log.warn("Wrong OTP for transaction : {}",transactionId);
+
+        if (!storedOtp.equals(otp)) {
+
+            log.warn(
+                    "Wrong OTP for transaction : {}",
+                    transactionId
+            );
+
             redisTemplate.delete(otpKey);
+
             transaction.setFailureReason("Wrong OTP");
-            transaction.setTransactionStatus(TransactionStatus.FAILED);
+            transaction.setTransactionStatus(
+                    TransactionStatus.FAILED
+            );
+
             transactionRepository.save(transaction);
+
             return mapToResponse(transaction);
         }
-        //OTP Correct
-        //complete the transaction
-        log.info("OTP Verified- completing transaction : {}",transactionId);
+
+        log.info(
+                "OTP Verified- completing transaction : {}",
+                transactionId
+        );
+
         redisTemplate.delete(otpKey);
+
         completeTransaction(transaction);
+
         return mapToResponse(transaction);
-
     }
 
+    public void processCleanResult(String transactionId) {
 
-    public void processCleanResult(String transactionId){
-        Transaction transaction=transactionRepository.findById(transactionId)
-                .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
+        Long id = Long.valueOf(transactionId);
+
+        Transaction transaction =
+                transactionRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Transaction : "
+                                                + transactionId
+                                                + " Not Found"
+                                )
+                        );
+
         completeTransaction(transaction);
     }
 
-    private void completeTransaction(Transaction transaction){
-        //debit
-        accountServiceClient.deductBalance(transaction.getSenderAccountNumber(),transaction.getAmount());
+    private void completeTransaction(
+            Transaction transaction
+    ) {
 
-        //credit to receiver
-        accountServiceClient.creditBalance(transaction.getReceiverAccountNumber(),transaction.getAmount());
+        accountServiceClient.deductBalance(
+                transaction.getSenderAccountNumber(),
+                transaction.getAmount()
+        );
 
+        accountServiceClient.creditBalance(
+                transaction.getReceiverAccountNumber(),
+                transaction.getAmount()
+        );
 
-        transaction.setTransactionStatus(TransactionStatus.COMPLETED);
-        transaction.setCompletedAt(LocalDateTime.now());
+        transaction.setTransactionStatus(
+                TransactionStatus.COMPLETED
+        );
+
+        transaction.setCompletedAt(
+                LocalDateTime.now()
+        );
 
         transactionRepository.save(transaction);
 
-        TransactionCompletedEvent event=new TransactionCompletedEvent(
-                transaction.getId(),
-                transaction.getSenderAccountNumber(),
-                transaction.getReceiverAccountNumber(),
-                transaction.getAmount(),
-                transaction.getDescription()
+        TransactionCompletedEvent event =
+                new TransactionCompletedEvent(
+                        String.valueOf(transaction.getId()),
+                        transaction.getSenderAccountNumber(),
+                        transaction.getReceiverAccountNumber(),
+                        transaction.getAmount(),
+                        transaction.getDescription()
+                );
+
+        kafkaTemplate.send(
+                TRANSACTION_COMPLETED_TOPIC,
+                String.valueOf(transaction.getId()),
+                event
         );
 
-        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,transaction.getId(),event);
-        log.info("SAGA COMPLETE- transaction : {} completed ",transaction.getId());
+        log.info(
+                "SAGA COMPLETE - transaction : {} completed",
+                transaction.getId()
+        );
     }
 
-    public TransactionResponse getTransaction(String transactionId){
-        Transaction transaction=transactionRepository.findById(transactionId)
-                .orElseThrow(()->new RuntimeException("Transaction : "+transactionId+"Not Found"));
+    public TransactionResponse getTransaction(
+            String transactionId
+    ) {
+
+        Long id = Long.valueOf(transactionId);
+
+        Transaction transaction =
+                transactionRepository
+                        .findById(id)
+                        .orElseThrow(() ->
+                                new RuntimeException(
+                                        "Transaction : "
+                                                + transactionId
+                                                + " Not Found"
+                                )
+                        );
+
         return mapToResponse(transaction);
     }
-
 }

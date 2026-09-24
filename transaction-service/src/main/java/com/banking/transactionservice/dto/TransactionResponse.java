@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 public class TransactionResponse {
+
     private String transactionId;
     private String referenceNumber;
     private String senderAccountNumber;
@@ -26,6 +27,4 @@ public class TransactionResponse {
     private String failureReason;
     private LocalDateTime createdAt;
     private LocalDateTime completedAt;
-
-
 }
