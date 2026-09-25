@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record TransactionInitiatedEvent(
-        String transactionId,
+        Long transactionId,
         String senderAccountNumber,
         String receiverAccountNumber,
         BigDecimal amount,

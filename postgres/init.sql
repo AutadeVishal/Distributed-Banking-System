@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
 
     created_at TIMESTAMP(6)
     );
+
+
 \connect payments_db
 
 CREATE TABLE IF NOT EXISTS payments (

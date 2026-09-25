@@ -38,7 +38,7 @@ public class TransactionEventConsumer {
             @Payload VerificationRequiredEvent verificationRequiredEvent
             ){
         try{
-            String transactionId=verificationRequiredEvent.transactionId();
+            Long transactionId=verificationRequiredEvent.transactionId();
             String senderAccountNumber=verificationRequiredEvent.senderAccountNumber();
             String reason=verificationRequiredEvent.reason();
             BigDecimal amount=verificationRequiredEvent.amount();
@@ -72,7 +72,7 @@ public class TransactionEventConsumer {
                     otp,
                     amount
             );
-            kafkaTemplate.send(TRANSACTION_OTP_GENERATED_TOPIC,transactionId,otpGeneratedEvent);
+            kafkaTemplate.send(TRANSACTION_OTP_GENERATED_TOPIC,transactionId.toString(),otpGeneratedEvent);
 
 
         }catch(Exception e){

@@ -326,13 +326,11 @@ public class TransactionService {
         return mapToResponse(transaction);
     }
 
-    public void processCleanResult(String transactionId) {
-
-        Long id = Long.valueOf(transactionId);
+    public void processCleanResult(Long transactionId) {
 
         Transaction transaction =
                 transactionRepository
-                        .findById(id)
+                        .findById(transactionId)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Transaction : "
@@ -370,7 +368,7 @@ public class TransactionService {
 
         TransactionCompletedEvent event =
                 new TransactionCompletedEvent(
-                        String.valueOf(transaction.getId()),
+                        transaction.getId(),
                         transaction.getSenderAccountNumber(),
                         transaction.getReceiverAccountNumber(),
                         transaction.getAmount(),
@@ -390,14 +388,13 @@ public class TransactionService {
     }
 
     public TransactionResponse getTransaction(
-            String transactionId
+            Long transactionId
     ) {
 
-        Long id = Long.valueOf(transactionId);
 
         Transaction transaction =
                 transactionRepository
-                        .findById(id)
+                        .findById(transactionId)
                         .orElseThrow(() ->
                                 new RuntimeException(
                                         "Transaction : "

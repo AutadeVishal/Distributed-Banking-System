@@ -5,7 +5,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public record VerificationRequiredEvent(
-        String transactionId,
+        Long transactionId,
         String senderAccountNumber,
         BigDecimal amount,
         String reason

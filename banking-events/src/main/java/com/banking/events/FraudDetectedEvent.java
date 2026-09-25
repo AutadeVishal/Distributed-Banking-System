@@ -3,7 +3,7 @@ package com.banking.events;
 import java.util.UUID;
 
 public record FraudDetectedEvent(
-        String transactionId,
+        Long transactionId,
         String senderAccountNumber,
         String reason
 ) {

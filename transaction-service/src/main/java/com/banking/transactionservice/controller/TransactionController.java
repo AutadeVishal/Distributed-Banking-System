@@ -31,7 +31,7 @@ public class TransactionController {
 
     @GetMapping("/{transactionId}")
     public ResponseEntity<TransactionResponse> getTransaction(
-            @PathVariable String transactionId
+            @PathVariable Long transactionId
     ){
       return ResponseEntity.ok(transactionService.getTransaction(transactionId));
     }
