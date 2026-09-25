@@ -121,7 +121,7 @@ public class PaymentService {
                     payment.getAmount()
 
             );
-            kafkaTemplate.send(PAYMENT_COMPLETED_TOPIC,payment.getId(),paymentCompletedEvent);
+            kafkaTemplate.send(PAYMENT_COMPLETED_TOPIC,payment.getId().toString(),paymentCompletedEvent);
             log.info("Payment Completed :{}",payment.getId());
         }
         catch(Exception e){
@@ -146,7 +146,7 @@ public class PaymentService {
                   payment.getAmount(),
                   payment.getFailureReason()
           );
-          kafkaTemplate.send(PAYMENT_FAILED_TOPIC, payment.getId(), paymentFailedEvent);
+          kafkaTemplate.send(PAYMENT_FAILED_TOPIC, payment.getId().toString(), paymentFailedEvent);
           log.info("Payment Failed :{}", payment.getId());
       }
       catch (Exception e){

@@ -12,15 +12,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.security.SecureRandom;
-import java.util.Optional;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class AccountService {
     private final AccountRepository accountRepository;
-    private static final SecureRandom secureRandom=new SecureRandom();
 
     public AccountResponse createAccount(CreateAccountRequest request){
         log.info("Creating Account for : {}",request.getEmail());
@@ -124,17 +121,13 @@ public class AccountService {
         .balance(account.getBalance())
         .dailyTransactionLimit(account.getDailyTransactionLimit())
         .createdAt(account.getCreatedAt())
+        .updatedAt(account.getUpdatedAt())
                 .build();
     }
 
-    //generating uique 12 digit account number
+    // PostgreSQL sequence guarantees uniqueness under concurrent account creation.
     private String generateAccountNumber(){
-        String accountNumber;
-        do{
-            Long number=secureRandom.nextLong(1_000_000_000_000L);
-            accountNumber=String.format("%012d",number);
-        }while(accountRepository.existsByAccountNumber(accountNumber));
-        return accountNumber;
+        return String.format("%012d", accountRepository.getNextAccountNumber());
     }
 
 

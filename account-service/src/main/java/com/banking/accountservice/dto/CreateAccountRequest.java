@@ -1,8 +1,6 @@
 package com.banking.accountservice.dto;
 
-import com.banking.accountservice.entity.AccountStatus;
 import com.banking.accountservice.entity.AccountType;
-import jakarta.persistence.Column;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

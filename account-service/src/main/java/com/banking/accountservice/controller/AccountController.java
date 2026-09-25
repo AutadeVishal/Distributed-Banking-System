@@ -2,12 +2,9 @@ package com.banking.accountservice.controller;
 
 import com.banking.accountservice.dto.AccountResponse;
 import com.banking.accountservice.dto.CreateAccountRequest;
-import com.banking.accountservice.entity.Account;
-import com.banking.accountservice.repository.AccountRepository;
 import com.banking.accountservice.service.AccountService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

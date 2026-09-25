@@ -4,9 +4,17 @@ CREATE DATABASE payments_db;
 
 \connect accounts_db
 
+CREATE SEQUENCE IF NOT EXISTS account_number_seq
+    START WITH 1
+    INCREMENT BY 1
+    MINVALUE 1
+    MAXVALUE 999999999999
+    NO CYCLE
+    CACHE 100;
+
 CREATE TABLE IF NOT EXISTS accounts (
-    id VARCHAR(255) PRIMARY KEY,
-    account_number VARCHAR(255) NOT NULL UNIQUE,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    account_number VARCHAR(12) NOT NULL UNIQUE,
     account_holder_name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(255) NOT NULL,
@@ -94,7 +102,7 @@ CREATE TABLE IF NOT EXISTS idempotency_records (
 \connect payments_db
 
 CREATE TABLE IF NOT EXISTS payments (
-    id VARCHAR(255) PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     razorpay_order_id VARCHAR(255),
     razorpay_payment_id VARCHAR(255),
     account_number VARCHAR(255) NOT NULL,

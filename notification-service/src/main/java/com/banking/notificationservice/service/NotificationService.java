@@ -6,8 +6,6 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
-
 @Service
 @Slf4j
 public class NotificationService {
@@ -19,7 +17,6 @@ public class NotificationService {
             @Payload OTPGeneratedEvent otpGeneratedEvent
             ){
         try{
-            String transactionId= otpGeneratedEvent.transactionId();
             String senderAccountNumber= otpGeneratedEvent.senderAccountNumber();
             String otp= otpGeneratedEvent.otp();
             String amount= otpGeneratedEvent.amount().toString();

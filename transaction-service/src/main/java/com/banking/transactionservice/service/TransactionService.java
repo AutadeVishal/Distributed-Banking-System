@@ -188,7 +188,7 @@ public class TransactionService {
 
         TransactionInitiatedEvent event =
                 new TransactionInitiatedEvent(
-                        String.valueOf(transaction.getId()),
+                        transaction.getId(),
                         transaction.getSenderAccountNumber(),
                         transaction.getReceiverAccountNumber(),
                         transaction.getAmount(),
@@ -226,7 +226,7 @@ public class TransactionService {
 
         return TransactionResponse.builder()
                 .transactionId(
-                        String.valueOf(transaction.getId())
+                        transaction.getId()
                 )
                 .referenceNumber(
                         transaction.getReferenceNumber()

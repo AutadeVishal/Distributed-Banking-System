@@ -37,7 +37,7 @@ public class FraudDetectionService {
 
 
     public void checkTransaction(TransactionInitiatedEvent transactionInitiatedEvent){
-        String transactionId=transactionInitiatedEvent.transactionId();
+        Long transactionId=transactionInitiatedEvent.transactionId();
         String senderAccountNumber=transactionInitiatedEvent.senderAccountNumber();
         BigDecimal amount=transactionInitiatedEvent.amount();
 
@@ -56,7 +56,7 @@ public class FraudDetectionService {
                     amount,
                     result.getReason()
             );
-            kafkaTemplate.send(VERIFICATION_REQUIRED_TOPIC,transactionId,verificationRequiredEvent);
+            kafkaTemplate.send(VERIFICATION_REQUIRED_TOPIC,transactionId.toString(),verificationRequiredEvent);
         }
         else{
             //proceed with transaction
@@ -67,7 +67,7 @@ public class FraudDetectionService {
                     false,
                     null
             );
-            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC,transactionId,cleanEvent);
+            kafkaTemplate.send(FRAUD_CHECK_CLEAN_RESULT_TOPIC,transactionId.toString(),cleanEvent);
 
         }
     }
