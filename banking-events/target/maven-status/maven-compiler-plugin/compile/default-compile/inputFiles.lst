@@ -4,6 +4,6 @@ C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\PaymentFailedEvent.java
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\TransactionCleanEvent.java
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\TransactionCompletedEvent.java
+C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\TransactionFailedEvent.java
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\TransactionInitiatedEvent.java
-C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\TransactionRefundedEvent.java
 C:\My Files\Distributed-Banking-System\banking-events\src\main\java\com\banking\events\VerificationRequiredEvent.java

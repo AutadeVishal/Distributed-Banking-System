@@ -53,4 +53,11 @@ public class TransactionController {
         return ResponseEntity.ok(transactionService.verifyOTP(transactionId,otp));
     }
 
+    @PostMapping("/{transactionId}/request-otp")
+    public ResponseEntity<TransactionResponse> requestOtp(
+            @PathVariable Long transactionId
+    ) {
+        return ResponseEntity.ok(transactionService.requestNewOtp(transactionId));
+    }
+
 }

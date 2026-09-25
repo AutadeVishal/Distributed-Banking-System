@@ -59,7 +59,26 @@ public class NotificationService {
             log.error("Exception occurred while consumeTransactionCompleted : {}",e.getMessage());
         }
     }
-@KafkaListener(topics = "fraud.detected")
+    @KafkaListener(topics = "transaction.failed")
+    public void consumeTransactionFailed(
+        @Payload TransactionFailedEvent transactionFailedEvent
+                ){
+        try{
+            sendAlert(
+                    transactionFailedEvent.senderAccountNumber(),
+                    "Transaction Failed",
+                    String.format(
+                            "Transaction %s failed. Reason: %s",
+                            transactionFailedEvent.transactionId(),
+                            transactionFailedEvent.reason()
+                    )
+            );
+        } catch(Exception e){
+            log.error("Exception occurred while consuming transaction.failed: {}", e.getMessage());
+        }
+    }
+
+    @KafkaListener(topics = "fraud.detected")
     public void consumeFraudDetected(
         @Payload FraudDetectedEvent fraudDetectedEvent
         ){
@@ -69,30 +88,12 @@ public class NotificationService {
             String reason=fraudDetectedEvent.reason();
             sendAlert(accountNumber,
                     "Suspicious Activity Detected",
-                    String.format("Your account : %s has been blocked due to suspicious activity.\n Contact Your Bank Immediately.%s",accountNumber,reason));
+                    String.format("Contact Your Bank Immediately if you didn't initiate a transaction from %s the reason was %s",accountNumber,reason));
         }
         catch(Exception e){
             log.error("Exception occurred while consumeFraudDetected : {}",e.getMessage());
         }
     }
-
-    @KafkaListener(topics = "transaction.refunded")
-    public void consumeRefundEvent(
-        @Payload TransactionRefundedEvent transactionRefundedEvent
-                ){
-        try{
-            String senderAccountNumber=transactionRefundedEvent.senderAccountNumber();
-            String amount=transactionRefundedEvent.amount().toString();
-            String reason=transactionRefundedEvent.reason();
-            sendAlert(senderAccountNumber,
-                    "Refund Processed",
-                    String.format("Your transaction of %s was cancelled and amount has been refunded back to %s",amount,senderAccountNumber));
-        }catch(Exception e){
-            log.error("Exception occurred while consumeRefundEvent  : {}",e.getMessage());
-        }
-    }
-
-
 
     /*
         Events sent by payment service

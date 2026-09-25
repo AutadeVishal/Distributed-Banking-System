@@ -46,8 +46,9 @@ public class TransactionEventConsumer {
             Transaction transaction=transactionRepository.findById(transactionId)
                     .orElseThrow(()->new RuntimeException("Transaction Not Found:"+transactionId));
 
-            if(transaction.getTransactionStatus()!= TransactionStatus.PROCESSING){
-                log.warn(" Transaction : {} not PROCESSING -skipping",transactionId);
+            if(transaction.getTransactionStatus() != TransactionStatus.PROCESSING
+                    && transaction.getTransactionStatus() != TransactionStatus.PENDING_VERIFICATION){
+                log.warn(" Transaction : {} not awaiting verification -skipping",transactionId);
                 return ;
             }
             //generate six digit OTP
@@ -57,6 +58,7 @@ public class TransactionEventConsumer {
             //expires in 5 minutes
             String otpKey="verification:otp"+transactionId;
                     redisTemplate.opsForValue().set(otpKey,otp,OTP_EXPIRY_MINUTES, TimeUnit.MINUTES);
+                    redisTemplate.delete("verification:attempts:" + transactionId);
 
 
                     transaction.setTransactionStatus(TransactionStatus.PENDING_VERIFICATION);

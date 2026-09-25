@@ -1,7 +1,10 @@
 package com.banking.transactionservice.service;
 
 import com.banking.events.TransactionCompletedEvent;
+import com.banking.events.TransactionFailedEvent;
 import com.banking.events.TransactionInitiatedEvent;
+import com.banking.events.VerificationRequiredEvent;
+import com.banking.events.FraudDetectedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.dto.TransferRequest;
@@ -23,6 +26,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -43,6 +47,12 @@ public class TransactionService {
 
     private static final String FRAUD_DETECTED_TOPIC =
             "fraud.detected";
+
+    private static final String TRANSACTION_FAILED_TOPIC =
+            "transaction.failed";
+
+    private static final int MAX_OTP_ATTEMPTS = 3;
+    private static final long OTP_EXPIRY_MINUTES = 5;
 
     @Transactional
     public TransactionResponse initiateTransaction(
@@ -270,6 +280,16 @@ public class TransactionService {
                                 )
                         );
 
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+            log.info(
+                    "Skipping stale OTP verification for transaction {} in status {}",
+                    transactionId,
+                    transaction.getTransactionStatus()
+            );
+            return mapToResponse(transaction);
+        }
+
         String otpKey =
                 "verification:otp" + transactionId;
 
@@ -285,13 +305,6 @@ public class TransactionService {
                     transactionId
             );
 
-            transaction.setFailureReason("OTP Expired");
-            transaction.setTransactionStatus(
-                    TransactionStatus.FAILED
-            );
-
-            transactionRepository.save(transaction);
-
             return mapToResponse(transaction);
         }
 
@@ -302,14 +315,41 @@ public class TransactionService {
                     transactionId
             );
 
-            redisTemplate.delete(otpKey);
-
-            transaction.setFailureReason("Wrong OTP");
-            transaction.setTransactionStatus(
-                    TransactionStatus.FAILED
+            String attemptsKey = "verification:attempts:" + transactionId;
+            Long attempts = redisTemplate.opsForValue().increment(attemptsKey);
+            redisTemplate.expire(
+                    attemptsKey,
+                    OTP_EXPIRY_MINUTES,
+                    TimeUnit.MINUTES
             );
 
-            transactionRepository.save(transaction);
+            if (attempts != null && attempts >= MAX_OTP_ATTEMPTS) {
+                String reason = "Account locked after 3 incorrect OTP submissions";
+                try {
+                    accountServiceClient.lockAccount(
+                            transaction.getSenderAccountNumber()
+                    );
+                } catch (Exception ex) {
+                    log.error(
+                            "Could not lock sender account {} after OTP limit for transaction {}",
+                            transaction.getSenderAccountNumber(),
+                            transaction.getId(),
+                            ex
+                    );
+                }
+
+                redisTemplate.delete(otpKey);
+                redisTemplate.delete(attemptsKey);
+                publishFraudDetected(transaction, reason);
+                failTransaction(transaction, reason);
+            } else {
+                log.info(
+                        "Incorrect OTP attempt {} of {} for transaction {}",
+                        attempts,
+                        MAX_OTP_ATTEMPTS,
+                        transactionId
+                );
+            }
 
             return mapToResponse(transaction);
         }
@@ -326,6 +366,32 @@ public class TransactionService {
         return mapToResponse(transaction);
     }
 
+    public TransactionResponse requestNewOtp(Long transactionId) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new RuntimeException(
+                        "Transaction : " + transactionId + " Not Found"
+                ));
+
+        if (transaction.getTransactionStatus() != TransactionStatus.PENDING_VERIFICATION) {
+            throw new IllegalStateException(
+                    "A new OTP can only be requested for a transaction pending verification"
+            );
+        }
+
+        VerificationRequiredEvent event = new VerificationRequiredEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                transaction.getAmount(),
+                "OTP renewal requested"
+        );
+        kafkaTemplate.send(
+                "verification.required",
+                String.valueOf(transaction.getId()),
+                event
+        );
+        return mapToResponse(transaction);
+    }
+
     public void processCleanResult(Long transactionId) {
 
         Transaction transaction =
@@ -339,6 +405,15 @@ public class TransactionService {
                                 )
                         );
 
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+            log.info(
+                    "Transaction {} already settled or failed; ignoring clean result",
+                    transactionId
+            );
+            return;
+        }
+
         completeTransaction(transaction);
     }
 
@@ -346,15 +421,26 @@ public class TransactionService {
             Transaction transaction
     ) {
 
-        accountServiceClient.deductBalance(
-                transaction.getSenderAccountNumber(),
-                transaction.getAmount()
-        );
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED) {
+            log.info("Transaction {} already completed. skipping settlement.", transaction.getId());
+            return;
+        }
 
-        accountServiceClient.creditBalance(
-                transaction.getReceiverAccountNumber(),
-                transaction.getAmount()
-        );
+        try {
+            accountServiceClient.transfer(
+                    transaction.getSenderAccountNumber(),
+                    transaction.getReceiverAccountNumber(),
+                    transaction.getAmount()
+            );
+        } catch (Exception ex) {
+            log.error(
+                    "Settlement failed for transaction {}.",
+                    transaction.getId(),
+                    ex
+            );
+            failTransaction(transaction, "Settlement failed: " + ex.getMessage());
+            throw ex;
+        }
 
         transaction.setTransactionStatus(
                 TransactionStatus.COMPLETED
@@ -384,6 +470,41 @@ public class TransactionService {
         log.info(
                 "SAGA COMPLETE - transaction : {} completed",
                 transaction.getId()
+        );
+    }
+
+    private void failTransaction(Transaction transaction, String reason) {
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED) {
+            return;
+        }
+
+        transaction.setFailureReason(reason);
+        transaction.setTransactionStatus(TransactionStatus.FAILED);
+        transactionRepository.save(transaction);
+
+        TransactionFailedEvent event = new TransactionFailedEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                transaction.getReceiverAccountNumber(),
+                reason
+        );
+        kafkaTemplate.send(
+                TRANSACTION_FAILED_TOPIC,
+                String.valueOf(transaction.getId()),
+                event
+        );
+    }
+
+    private void publishFraudDetected(Transaction transaction, String reason) {
+        FraudDetectedEvent event = new FraudDetectedEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                reason
+        );
+        kafkaTemplate.send(
+                FRAUD_DETECTED_TOPIC,
+                String.valueOf(transaction.getId()),
+                event
         );
     }
 

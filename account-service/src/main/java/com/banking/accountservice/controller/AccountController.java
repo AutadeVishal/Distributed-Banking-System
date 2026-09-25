@@ -55,22 +55,13 @@ public class AccountController {
         return ResponseEntity.ok("Account Number Unlocked Successfully");
     }
 
-    @PutMapping("/{accountNumber}/deduct")
-    public ResponseEntity<String> deductBalance(
-            @PathVariable String accountNumber,
+    @PutMapping("/transfer")
+    public ResponseEntity<String> transfer(
+            @RequestParam("senderAccountNumber") String senderAccountNumber,
+            @RequestParam("receiverAccountNumber") String receiverAccountNumber,
             @RequestParam("amount") BigDecimal amount
-    )
-    {
-        accountService.deductBalance(accountNumber,amount);
-        return ResponseEntity.ok("Balance Deducted Succesfully");
-    }
-
-    @PutMapping("/{accountNumber}/credit")
-    public ResponseEntity<String> creditBalance(
-            @PathVariable String accountNumber,
-            @RequestParam("amount") BigDecimal amount
-    ){
-        accountService.creditBalance(accountNumber,amount);
-        return ResponseEntity.ok("Balance Credited Successfully");
+    ) {
+        accountService.transfer(senderAccountNumber, receiverAccountNumber, amount);
+        return ResponseEntity.ok("Transfer completed successfully");
     }
 }

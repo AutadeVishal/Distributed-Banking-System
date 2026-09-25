@@ -80,33 +80,36 @@ public class AccountService {
     called by transaction service
      */
     @Transactional
-    public  void deductBalance(String accountNumber,BigDecimal amount){
-        log.info("Deducting Balance {} from Account {} ",amount,accountNumber);
-        Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new RuntimeException("Account Not Found"));
-        if(account.getAccountStatus()!=AccountStatus.ACTIVE){
-            throw new RuntimeException("Account : "+ account.getAccountNumber() +" is not active to deduct amount");
+    public void transfer(String senderAccountNumber,
+                         String receiverAccountNumber,
+                         BigDecimal amount) {
+        if (senderAccountNumber.equals(receiverAccountNumber)) {
+            throw new IllegalArgumentException("Sender and receiver accounts must be different");
         }
-        if(account.getBalance().compareTo(amount)<0){
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("Transfer amount must be positive");
+        }
+
+        Account sender = accountRepository.findByAccountNumber(senderAccountNumber)
+                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+        Account receiver = accountRepository.findByAccountNumber(receiverAccountNumber)
+                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+
+        if (sender.getAccountStatus() != AccountStatus.ACTIVE) {
+            throw new RuntimeException("Sender account is not active");
+        }
+        if (receiver.getAccountStatus() != AccountStatus.ACTIVE) {
+            throw new RuntimeException("Receiver account is not active");
+        }
+        if (sender.getBalance().compareTo(amount) < 0) {
             throw new RuntimeException("Insufficient Balance");
         }
-        account.setBalance(account.getBalance().subtract(amount));
-        accountRepository.save(account);
-        log.info("Account Balance Updated to {}",account.getBalance());
 
-    }
-
-    /*
-        called by transaction service via kafka
-     */
-    @Transactional
-    public void creditBalance(String accountNumber,BigDecimal amount){
-        log.info("Crediting  Balance {} to Account {} ",amount,accountNumber);
-        Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new RuntimeException("Account Not Found"));
-        account.setBalance(account.getBalance().add(amount));
-        accountRepository.save(account);
-        log.info("Account Balance Updated to {}",account.getBalance());
+        sender.setBalance(sender.getBalance().subtract(amount));
+        receiver.setBalance(receiver.getBalance().add(amount));
+        accountRepository.save(sender);
+        accountRepository.save(receiver);
+        log.info("Transferred {} from {} to {}", amount, senderAccountNumber, receiverAccountNumber);
     }
 
     private AccountResponse mapToResponce(Account account){
