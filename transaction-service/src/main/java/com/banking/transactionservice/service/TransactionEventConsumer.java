@@ -6,6 +6,7 @@ import com.banking.events.VerificationRequiredEvent;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.repository.TransactionRepository;
+import com.banking.transactionservice.exception.TransactionNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -44,7 +45,7 @@ public class TransactionEventConsumer {
             BigDecimal amount=verificationRequiredEvent.amount();
             log.info("Verification Required - transaction: {} reason : {}",transactionId,reason);
             Transaction transaction=transactionRepository.findById(transactionId)
-                    .orElseThrow(()->new RuntimeException("Transaction Not Found:"+transactionId));
+                    .orElseThrow(()->new TransactionNotFoundException("Transaction not found: " + transactionId));
 
             if(transaction.getTransactionStatus() != TransactionStatus.PROCESSING
                     && transaction.getTransactionStatus() != TransactionStatus.PENDING_VERIFICATION){

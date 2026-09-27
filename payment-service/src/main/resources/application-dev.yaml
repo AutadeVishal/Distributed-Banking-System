@@ -9,7 +9,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
   kafka:
     bootstrap-servers: localhost:9092
     producer:
@@ -31,8 +30,3 @@ razorpay:
   key-id: rzp_test_TdRBWRUTpXMtWa
   key-secret: JYbilEMinbYEyuIK1isD1gNK
   webhook-secret: d4bcd51a1625829b3d3970680f1bff3681b2d10877fafb8ca7b0c8beb215d0b9c1eb3b59e5098c5c4f511be25c91f31
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info

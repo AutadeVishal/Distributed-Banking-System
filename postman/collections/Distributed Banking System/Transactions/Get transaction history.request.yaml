@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/transaction/account/history/{{accountNumber}}"
+method: GET
+order: 3000

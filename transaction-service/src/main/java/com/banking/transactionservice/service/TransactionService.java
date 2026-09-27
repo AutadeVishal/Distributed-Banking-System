@@ -14,6 +14,9 @@ import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
 import com.banking.transactionservice.repository.IdempotencyRepository;
 import com.banking.transactionservice.repository.TransactionRepository;
+import com.banking.transactionservice.exception.TransactionNotFoundException;
+import com.banking.transactionservice.exception.TransactionStateException;
+import com.banking.transactionservice.exception.TransactionConsistencyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -27,6 +30,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.concurrent.TimeUnit;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -78,7 +82,7 @@ public class TransactionService {
                     transactionRepository
                             .findById(existingRecord.getTransactionId())
                             .orElseThrow(() ->
-                                    new IllegalStateException(
+                                    new TransactionConsistencyException(
                                             "Transaction not found for idempotency key: "
                                                     + idempotencyKey
                                     )
@@ -93,14 +97,7 @@ public class TransactionService {
         }
 
 
-        Long referenceSequence =
-                transactionRepository.getNextReferenceNumber();
-
-        String referenceNumber =
-                "TXN-" + String.format(
-                        "%012d",
-                        referenceSequence
-                );
+        String referenceNumber = generateReferenceNumber();
 
 
         Transaction transaction =
@@ -147,7 +144,7 @@ public class TransactionService {
                     idempotencyRepository
                             .findByIdempotencyKey(idempotencyKey)
                             .orElseThrow(() ->
-                                    new IllegalStateException(
+                                    new TransactionConsistencyException(
                                             "Idempotency record not found after claim conflict"
                                     )
                             );
@@ -158,7 +155,7 @@ public class TransactionService {
                                     winningRecord.getTransactionId()
                             )
                             .orElseThrow(() ->
-                                    new IllegalStateException(
+                                    new TransactionConsistencyException(
                                             "Winning transaction not found"
                                     )
                             );
@@ -258,7 +255,7 @@ public class TransactionService {
     }
 
     public TransactionResponse verifyOTP(
-            String transactionId,
+            Long transactionId,
             String otp
     ) {
 
@@ -267,13 +264,11 @@ public class TransactionService {
                 transactionId
         );
 
-        Long id = Long.valueOf(transactionId);
-
         Transaction transaction =
                 transactionRepository
-                        .findById(id)
+                        .findById(transactionId)
                         .orElseThrow(() ->
-                                new RuntimeException(
+                                new TransactionNotFoundException(
                                         "Transaction : "
                                                 + transactionId
                                                 + " Not Found"
@@ -368,12 +363,12 @@ public class TransactionService {
 
     public TransactionResponse requestNewOtp(Long transactionId) {
         Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new RuntimeException(
+                .orElseThrow(() -> new TransactionNotFoundException(
                         "Transaction : " + transactionId + " Not Found"
                 ));
 
         if (transaction.getTransactionStatus() != TransactionStatus.PENDING_VERIFICATION) {
-            throw new IllegalStateException(
+            throw new TransactionStateException(
                     "A new OTP can only be requested for a transaction pending verification"
             );
         }
@@ -398,7 +393,7 @@ public class TransactionService {
                 transactionRepository
                         .findById(transactionId)
                         .orElseThrow(() ->
-                                new RuntimeException(
+                                new TransactionNotFoundException(
                                         "Transaction : "
                                                 + transactionId
                                                 + " Not Found"
@@ -517,7 +512,7 @@ public class TransactionService {
                 transactionRepository
                         .findById(transactionId)
                         .orElseThrow(() ->
-                                new RuntimeException(
+                                new TransactionNotFoundException(
                                         "Transaction : "
                                                 + transactionId
                                                 + " Not Found"
@@ -525,5 +520,19 @@ public class TransactionService {
                         );
 
         return mapToResponse(transaction);
+    }
+
+    private String generateReferenceNumber() {
+        String referenceNumber;
+        do {
+            referenceNumber = "TXN-" + String.format(
+                    "%012d",
+                    Math.floorMod(
+                            UUID.randomUUID().getMostSignificantBits(),
+                            1_000_000_000_000L
+                    )
+            );
+        } while (transactionRepository.existsByReferenceNumber(referenceNumber));
+        return referenceNumber;
     }
 }

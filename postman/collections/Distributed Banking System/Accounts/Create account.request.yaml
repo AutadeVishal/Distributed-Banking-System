@@ -1,0 +1,16 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/account"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "accountHolderName": "Alice Johnson",
+      "email": "alicdfae@example.com",
+      "phone": "9876543210",
+      "accountType": "SAVINGS",
+      "initialDeposit": 10000.00
+    }
+order: 1000

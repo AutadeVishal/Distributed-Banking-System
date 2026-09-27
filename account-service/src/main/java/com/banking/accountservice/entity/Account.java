@@ -28,10 +28,10 @@ public class Account {
     @Column(nullable = false)
     private String accountHolderName;
 
-    @Column(nullable = false )
+    @Column(nullable = false,unique = true )
     private String email;
 
-    @Column(nullable = false)
+    @Column(nullable = false,unique = true )
     private String phone;
 
     @Enumerated(EnumType.STRING)

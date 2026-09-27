@@ -5,6 +5,11 @@ import com.banking.accountservice.dto.CreateAccountRequest;
 import com.banking.accountservice.entity.Account;
 import com.banking.accountservice.entity.AccountStatus;
 import com.banking.accountservice.entity.AccountType;
+import com.banking.accountservice.exception.AccountAlreadyExistsException;
+import com.banking.accountservice.exception.AccountNotFoundException;
+import com.banking.accountservice.exception.AccountInactiveException;
+import com.banking.accountservice.exception.InsufficientBalanceException;
+import com.banking.accountservice.exception.InvalidTransferException;
 import com.banking.accountservice.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.security.SecureRandom;
+import java.util.Random;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -21,8 +29,10 @@ public class AccountService {
 
     public AccountResponse createAccount(CreateAccountRequest request){
         log.info("Creating Account for : {}",request.getEmail());
-        if(accountRepository.existsAccountByEmail((request.getEmail()))){
-            throw new RuntimeException("Account Already Exists for Email :"+request.getEmail());
+        if (accountRepository.existsAccountByEmail(request.getEmail())) {
+            throw new AccountAlreadyExistsException(
+                    "An account already exists for this email"
+            );
         }
         String accountNumber=generateAccountNumber();
         Account account=Account.builder()
@@ -41,18 +51,20 @@ public class AccountService {
                 .build();
         Account savedAccount=accountRepository.save(account);
         log.info("Account Created {}",savedAccount.getAccountNumber());
-        return mapToResponce(savedAccount);
+        return mapToResponse(savedAccount);
     }
 
     public AccountResponse getAccount(String accountNumber){
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new RuntimeException("Account Not Found"));
-        return mapToResponce(account);
+                .orElseThrow(() ->
+                        new AccountNotFoundException("Account not found"));
+        return mapToResponse(account);
     }
 
     public BigDecimal getBalance(String accountNumber){
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new RuntimeException("Account Not Found"));
+                .orElseThrow(() ->
+                        new AccountNotFoundException("Account not found"));
         return account.getBalance();
     }
     /*
@@ -61,7 +73,7 @@ public class AccountService {
     public void lockAccount(String accountNumber){
         log.info("Blocking Account {}",accountNumber);
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new RuntimeException("Account Not Found"));
+                .orElseThrow(()->new AccountNotFoundException("Account not found"));
         account.setAccountStatus(AccountStatus.BLOCKED);
         accountRepository.save(account);
         log.info("Account Blocked:{}",account.getAccountNumber());
@@ -69,7 +81,7 @@ public class AccountService {
     public void unlockAccount(String accountNumber){
         log.info("Unlocking Account {}",accountNumber);
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new RuntimeException("Account Not Found"));
+                .orElseThrow(()->new AccountNotFoundException("Account not found"));
         account.setAccountStatus(AccountStatus.ACTIVE);
         accountRepository.save(account);
         log.info("Account unlocked:{}",account.getAccountNumber());
@@ -84,25 +96,25 @@ public class AccountService {
                          String receiverAccountNumber,
                          BigDecimal amount) {
         if (senderAccountNumber.equals(receiverAccountNumber)) {
-            throw new IllegalArgumentException("Sender and receiver accounts must be different");
+            throw new InvalidTransferException("Sender and receiver accounts must be different");
         }
         if (amount == null || amount.signum() <= 0) {
-            throw new IllegalArgumentException("Transfer amount must be positive");
+            throw new InvalidTransferException("Transfer amount must be positive");
         }
 
         Account sender = accountRepository.findByAccountNumber(senderAccountNumber)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new AccountNotFoundException("Account not found"));
         Account receiver = accountRepository.findByAccountNumber(receiverAccountNumber)
-                .orElseThrow(() -> new RuntimeException("Account Not Found"));
+                .orElseThrow(() -> new AccountNotFoundException("Account not found"));
 
         if (sender.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new RuntimeException("Sender account is not active");
+            throw new AccountInactiveException("Sender account is not active");
         }
         if (receiver.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new RuntimeException("Receiver account is not active");
+            throw new AccountInactiveException("Receiver account is not active");
         }
         if (sender.getBalance().compareTo(amount) < 0) {
-            throw new RuntimeException("Insufficient Balance");
+            throw new InsufficientBalanceException("Insufficient balance");
         }
 
         sender.setBalance(sender.getBalance().subtract(amount));
@@ -112,7 +124,7 @@ public class AccountService {
         log.info("Transferred {} from {} to {}", amount, senderAccountNumber, receiverAccountNumber);
     }
 
-    private AccountResponse mapToResponce(Account account){
+    private AccountResponse mapToResponse(Account account){
       return AccountResponse.builder()
         .id(account.getId())
         .accountNumber(account.getAccountNumber())
@@ -129,8 +141,19 @@ public class AccountService {
     }
 
     // PostgreSQL sequence guarantees uniqueness under concurrent account creation.
-    private String generateAccountNumber(){
-        return String.format("%012d", accountRepository.getNextAccountNumber());
+    private final Random random = new Random();
+
+    private String generateAccountNumber() {
+        String accountNumber;
+
+        do {
+            accountNumber = String.format(
+                    "%012d",
+                    random.nextLong(1_000_000_000_000L)
+            );
+        } while (accountRepository.existsByAccountNumber(accountNumber));
+
+        return accountNumber;
     }
 
 

@@ -8,8 +8,7 @@ spring:
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
-    show-sql: true
+      ddl-auto: update
   kafka:
     bootstrap-servers: kafka:9092
     producer:
@@ -34,8 +33,3 @@ account:
     url: http://account-service:8081
 server:
   port: 8082
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info

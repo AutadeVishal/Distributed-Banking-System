@@ -6,6 +6,7 @@ import com.banking.paymentservice.dto.CreatePaymentRequest;
 import com.banking.paymentservice.dto.PaymentResponse;
 import com.banking.paymentservice.entity.Payment;
 import com.banking.paymentservice.entity.PaymentStatus;
+import com.banking.paymentservice.exception.PaymentNotFoundException;
 import com.banking.paymentservice.respository.PaymentRepository;
 import com.razorpay.Order;
 import com.razorpay.RazorpayClient;
@@ -108,7 +109,7 @@ public class PaymentService {
             String razorpayPaymentId=(String)paymentData.get("id");
 
             Payment payment=paymentRepository.findByRazorpayOrderId(orderId)
-                    .orElseThrow(()->new RuntimeException("Payment not found for order :"+orderId));
+                    .orElseThrow(()->new PaymentNotFoundException("Payment not found for order: " + orderId));
             payment.setRazorpayPaymentId(razorpayPaymentId);
             payment.setStatus(PaymentStatus.COMPLETED);
             paymentRepository.save(payment);
@@ -135,7 +136,7 @@ public class PaymentService {
           String orderId = (String) paymentData.get("order_id");
 
           Payment payment = paymentRepository.findByRazorpayOrderId(orderId)
-                  .orElseThrow(() -> new RuntimeException("Payment not found for order :" + orderId));
+                  .orElseThrow(() -> new PaymentNotFoundException("Payment not found for order: " + orderId));
           payment.setStatus(PaymentStatus.FAILED);
           payment.setFailureReason("Payment Failed via Razorpay");
           paymentRepository.save(payment);

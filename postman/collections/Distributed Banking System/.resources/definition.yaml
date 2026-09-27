@@ -1,0 +1,9 @@
+$kind: collection
+description: Requests for the account, transaction, and payment APIs. The collection uses the API gateway by default.
+variables:
+  baseUrl: http://localhost:8080
+  accountNumber: "100000000001"
+  receiverAccountNumber: "100000000002"
+  transactionId: "1"
+  otp: "123456"
+  idempotencyKey: "{{$guid}}"

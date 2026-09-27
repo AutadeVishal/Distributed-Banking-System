@@ -45,7 +45,7 @@ public class TransactionController {
 
     @PostMapping("/{transactionId}/verify-otp")
     public ResponseEntity<TransactionResponse> verifyOTP(
-            @PathVariable String transactionId,
+            @PathVariable Long transactionId,
             @RequestParam("otp") String otp
     )
     {

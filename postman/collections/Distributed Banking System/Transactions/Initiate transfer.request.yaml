@@ -1,0 +1,24 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/transaction/transfer"
+method: POST
+headers:
+  Content-Type: application/json
+  Idempotency-Key: "{{idempotencyKey}}"
+body:
+  type: text
+  content: |-
+    {
+      "senderAccountNumber": "{{accountNumber}}",
+      "receiverAccountNumber": "{{receiverAccountNumber}}",
+      "amount": 100.00,
+      "description": "Postman test transfer"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      const response = pm.response.json();
+      if (response.transactionId !== undefined) {
+          pm.collectionVariables.set('transactionId', String(response.transactionId));
+      }
+    language: text/javascript
+order: 1000

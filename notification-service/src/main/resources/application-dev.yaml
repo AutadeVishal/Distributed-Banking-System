@@ -18,8 +18,3 @@ spring:
         spring.json.use.type.headers: true
 server:
   port: 8085
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info

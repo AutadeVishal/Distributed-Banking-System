@@ -45,8 +45,3 @@ spring:
                     redis-rate-limiter.requestedTokens: 1
 server:
   port: 8080
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,gateway

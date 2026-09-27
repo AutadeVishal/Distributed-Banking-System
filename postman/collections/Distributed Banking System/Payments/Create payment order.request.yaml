@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/payment/create-order"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "accountNumber": "{{accountNumber}}",
+      "amount": 250.00,
+      "description": "Postman payment test"
+    }
+order: 1000
