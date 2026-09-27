@@ -68,8 +68,10 @@ public class NotificationService {
                     transactionFailedEvent.senderAccountNumber(),
                     "Transaction Failed",
                     String.format(
-                            "Transaction %s failed. Reason: %s",
-                            transactionFailedEvent.transactionId(),
+                            "Transaction of %s from account %s failed to account %s. Reason: %s",
+                            transactionFailedEvent.amount(),
+                            transactionFailedEvent.senderAccountNumber(),
+                            transactionFailedEvent.receiverAccountNumber(),
                             transactionFailedEvent.reason()
                     )
             );

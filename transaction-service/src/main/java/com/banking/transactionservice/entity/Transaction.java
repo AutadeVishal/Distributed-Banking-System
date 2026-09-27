@@ -54,6 +54,7 @@ public class Transaction {
     @Enumerated(EnumType.STRING)
     private TransactionStatus transactionStatus;
 
+    @Column(length = 255)
     private String failureReason;
 
     @CreationTimestamp

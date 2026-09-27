@@ -2,6 +2,7 @@ package com.banking.accountservice.exception;
 
 import com.banking.error.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -64,10 +65,29 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_TRANSFER", ex.getMessage());
     }
 
-    @ExceptionHandler({IllegalArgumentException.class, ConstraintViolationException.class,
-            MethodArgumentNotValidException.class})
-    public ResponseEntity<ErrorResponse> handleBadRequest(Exception ex) {
-        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", ex.getMessage());
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+        FieldError fieldError = ex.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .orElse(null);
+        String message = fieldError == null || fieldError.getDefaultMessage() == null
+                ? "Request validation failed"
+                : fieldError.getDefaultMessage();
+        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException ex) {
+        String message = ex.getConstraintViolations().stream()
+                .findFirst()
+                .map(violation -> violation.getMessage())
+                .orElse("Request validation failed");
+        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleBadRequest(IllegalArgumentException ex) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", safeMessage(ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)
@@ -86,5 +106,9 @@ public class GlobalExceptionHandler {
 
     private ResponseEntity<ErrorResponse> response(HttpStatus status, String code, String message) {
         return ResponseEntity.status(status).body(new ErrorResponse(code, message, LocalDateTime.now()));
+    }
+
+    private String safeMessage(String message) {
+        return message == null || message.isBlank() ? "Invalid request" : message;
     }
 }

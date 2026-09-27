@@ -19,6 +19,7 @@ import com.banking.transactionservice.exception.TransactionStateException;
 import com.banking.transactionservice.exception.TransactionConsistencyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import feign.FeignException;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
@@ -276,7 +277,8 @@ public class TransactionService {
                         );
 
         if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
-                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED
+                || transaction.getTransactionStatus() == TransactionStatus.SETTLEMENT_FAILED) {
             log.info(
                     "Skipping stale OTP verification for transaction {} in status {}",
                     transactionId,
@@ -401,7 +403,8 @@ public class TransactionService {
                         );
 
         if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
-                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED
+                || transaction.getTransactionStatus() == TransactionStatus.SETTLEMENT_FAILED) {
             log.info(
                     "Transaction {} already settled or failed; ignoring clean result",
                     transactionId
@@ -433,8 +436,8 @@ public class TransactionService {
                     transaction.getId(),
                     ex
             );
-            failTransaction(transaction, "Settlement failed: " + ex.getMessage());
-            throw ex;
+            failSettlement(transaction, settlementFailureReason(ex));
+            return;
         }
 
         transaction.setTransactionStatus(
@@ -481,6 +484,7 @@ public class TransactionService {
                 transaction.getId(),
                 transaction.getSenderAccountNumber(),
                 transaction.getReceiverAccountNumber(),
+                transaction.getAmount(),
                 reason
         );
         kafkaTemplate.send(
@@ -488,6 +492,42 @@ public class TransactionService {
                 String.valueOf(transaction.getId()),
                 event
         );
+    }
+
+    private void failSettlement(Transaction transaction, String reason) {
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
+                || transaction.getTransactionStatus() == TransactionStatus.SETTLEMENT_FAILED) {
+            return;
+        }
+
+        transaction.setFailureReason(reason);
+        transaction.setTransactionStatus(TransactionStatus.SETTLEMENT_FAILED);
+        transactionRepository.save(transaction);
+
+        TransactionFailedEvent event = new TransactionFailedEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                transaction.getReceiverAccountNumber(),
+                transaction.getAmount(),
+                reason
+        );
+        kafkaTemplate.send(
+                TRANSACTION_FAILED_TOPIC,
+                String.valueOf(transaction.getId()),
+                event
+        );
+    }
+
+    private String settlementFailureReason(Exception ex) {
+        if (ex instanceof FeignException feignException) {
+            return switch (feignException.status()) {
+                case 400 -> "ACCOUNT_TRANSFER_REJECTED";
+                case 403 -> "ACCOUNT_INACTIVE";
+                case 404 -> "ACCOUNT_NOT_FOUND";
+                default -> "ACCOUNT_SERVICE_UNAVAILABLE";
+            };
+        }
+        return "SETTLEMENT_ERROR";
     }
 
     private void publishFraudDetected(Transaction transaction, String reason) {

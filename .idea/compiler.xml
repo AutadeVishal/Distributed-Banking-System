@@ -24,7 +24,6 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="banking-events" target="25" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">

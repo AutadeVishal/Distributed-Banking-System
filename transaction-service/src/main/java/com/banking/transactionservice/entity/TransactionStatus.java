@@ -15,5 +15,6 @@ public enum TransactionStatus {
     COMPLETED,
     PENDING_VERIFICATION,
     FAILED,
+    SETTLEMENT_FAILED,
     FLAGGED
 }
