@@ -15,7 +15,6 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @Builder
 public class AccountResponse {
-    private Long id;
     private String accountNumber;
     private String accountHolderName;
     private String email;

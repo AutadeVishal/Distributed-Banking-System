@@ -29,6 +29,17 @@ public class GlobalExceptionHandler {
                 ));
     }
 
+    @ExceptionHandler(AccountCreationException.class)
+    public ResponseEntity<ErrorResponse> handleAccountCreationException(AccountCreationException ex) {
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(
+                        new ErrorResponse("Internal Server Error",
+                                ex.getMessage(),
+                                LocalDateTime.now())
+                );
+    }
+
     @ExceptionHandler(AccountNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleAccountNotFound(
             AccountNotFoundException ex) {

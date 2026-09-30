@@ -12,26 +12,42 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="accounts")
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+@Table(
+        name = "accounts",
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_account_number",
+                        columnNames = "account_number"
+                ),
+                @UniqueConstraint(
+                        name = "uk_account_email",
+                        columnNames = "email"
+                ),
+                @UniqueConstraint(
+                        name = "uk_account_phone",
+                        columnNames = "phone"
+                )
+        }
+)
 public class Account {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false,unique = true)
+    @Column(nullable = false)
     private String accountNumber;
 
     @Column(nullable = false)
     private String accountHolderName;
 
-    @Column(nullable = false,unique = true )
+    @Column(nullable = false )
     private String email;
 
-    @Column(nullable = false,unique = true )
+    @Column(nullable = false)
     private String phone;
 
     @Enumerated(EnumType.STRING)

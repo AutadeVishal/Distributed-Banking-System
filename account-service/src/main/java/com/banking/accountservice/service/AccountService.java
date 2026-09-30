@@ -5,14 +5,12 @@ import com.banking.accountservice.dto.CreateAccountRequest;
 import com.banking.accountservice.entity.Account;
 import com.banking.accountservice.entity.AccountStatus;
 import com.banking.accountservice.entity.AccountType;
-import com.banking.accountservice.exception.AccountAlreadyExistsException;
-import com.banking.accountservice.exception.AccountNotFoundException;
-import com.banking.accountservice.exception.AccountInactiveException;
-import com.banking.accountservice.exception.InsufficientBalanceException;
-import com.banking.accountservice.exception.InvalidTransferException;
+import com.banking.accountservice.exception.*;
 import com.banking.accountservice.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.postgresql.util.PSQLException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,24 +32,44 @@ public class AccountService {
                     "An account already exists for this email"
             );
         }
-        String accountNumber=generateAccountNumber();
-        Account account=Account.builder()
-                .accountHolderName(request.getAccountHolderName())
-                .email(request.getEmail())
-                .phone(request.getPhone())
-                .accountType(request.getAccountType())
-                .balance(request.getInitialDeposit())
-                .accountStatus(AccountStatus.ACTIVE)
-                .accountNumber(accountNumber)
-                .dailyTransactionLimit(
-                    request.getAccountType()== AccountType.SAVINGS
-                    ? new BigDecimal(100000)
-                    : new BigDecimal(500000)
+
+        for(int attempt=0;attempt<3;attempt++){
+            try{
+                String accountNumber=generateAccountNumber();
+                Account account=Account.builder()
+                        .accountHolderName(request.getAccountHolderName())
+                        .email(request.getEmail())
+                        .phone(request.getPhone())
+                        .accountType(request.getAccountType())
+                        .balance(request.getInitialDeposit())
+                        .accountStatus(AccountStatus.ACTIVE)
+                        .accountNumber(accountNumber)
+                        .dailyTransactionLimit(
+                                request.getAccountType()== AccountType.SAVINGS
+                                        ? new BigDecimal(100000)
+                                        : new BigDecimal(500000)
                         )
-                .build();
-        Account savedAccount=accountRepository.save(account);
-        log.info("Account Created {}",savedAccount.getAccountNumber());
-        return mapToResponse(savedAccount);
+                        .build();
+                Account saved = accountRepository.saveAndFlush(account);
+                log.info("Account Created {}",saved.getAccountNumber());
+                return mapToResponse(saved);
+
+            }
+            catch (DataIntegrityViolationException e) {
+                if (isAccountNumberCollision(e)) {
+                    log.warn(
+                            "Account number collision. Retrying attempt {}/3",
+                            attempt + 1
+                    );
+                    continue;
+                }
+
+                throw e;
+            }
+        }
+        throw new AccountCreationException(
+                "Unable to create account. Please try again."
+        );
     }
 
     public AccountResponse getAccount(String accountNumber){
@@ -126,7 +144,6 @@ public class AccountService {
 
     private AccountResponse mapToResponse(Account account){
       return AccountResponse.builder()
-        .id(account.getId())
         .accountNumber(account.getAccountNumber())
         .accountHolderName(account.getAccountHolderName())
         .email(account.getEmail())
@@ -140,21 +157,27 @@ public class AccountService {
                 .build();
     }
 
-    // PostgreSQL sequence guarantees uniqueness under concurrent account creation.
-    private final Random random = new Random();
+    private final SecureRandom random = new SecureRandom();
 
     private String generateAccountNumber() {
-        String accountNumber;
-
-        do {
-            accountNumber = String.format(
-                    "%012d",
-                    random.nextLong(1_000_000_000_000L)
-            );
-        } while (accountRepository.existsByAccountNumber(accountNumber));
-
-        return accountNumber;
+        return String.format(
+                "%012d",
+                random.nextLong(1_000_000_000_000L)
+        );
     }
 
+    private boolean isAccountNumberCollision(DataIntegrityViolationException ex) {
+        Throwable cause = ex;
+        while (cause != null) {
+            if (cause instanceof PSQLException psql) {
+                return "uk_account_number".equals(
+                        psql.getServerErrorMessage().getConstraint()
+                );
+            }
+            cause = cause.getCause();
+        }
+
+        return false;
+    }
 
 }
