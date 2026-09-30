@@ -19,7 +19,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AccountIdempotency {
+public class AccountIdempotencyRecord {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

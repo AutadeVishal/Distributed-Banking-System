@@ -3,9 +3,11 @@ package com.banking.accountservice.service;
 import com.banking.accountservice.dto.AccountResponse;
 import com.banking.accountservice.dto.CreateAccountRequest;
 import com.banking.accountservice.entity.Account;
+import com.banking.accountservice.entity.AccountIdempotencyRecord;
 import com.banking.accountservice.entity.AccountStatus;
 import com.banking.accountservice.entity.AccountType;
 import com.banking.accountservice.exception.*;
+import com.banking.accountservice.repository.AccountIdempotencyRepository;
 import com.banking.accountservice.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,17 +18,38 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
-import java.util.Random;
-import java.util.UUID;
 
 @Service
 @Slf4j
 @RequiredArgsConstructor
 public class AccountService {
     private final AccountRepository accountRepository;
+    private final AccountIdempotencyRepository idempotencyRepository;
 
-    public AccountResponse createAccount(CreateAccountRequest request){
-        log.info("Creating Account for : {}",request.getEmail());
+    @Transactional
+    public AccountResponse createAccount(
+            CreateAccountRequest request,
+            String idempotencyKey
+    ){
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new IllegalArgumentException("Idempotency-Key header is required");
+        }
+
+        log.info("Creating account for: {}", request.getEmail());
+
+        AccountIdempotencyRecord existingRecord =
+                idempotencyRepository.findByIdempotencyKey(idempotencyKey)
+                        .orElse(null);
+
+        if (existingRecord != null) {
+            Account existingAccount = accountRepository.findById(existingRecord.getAccountId())
+                    .orElseThrow(() -> new AccountCreationException(
+                            "Account not found for idempotency key: " + idempotencyKey
+                    ));
+            log.info("Returning existing account for idempotency key: {}", idempotencyKey);
+            return mapToResponse(existingAccount);
+        }
+
         if (accountRepository.existsAccountByEmail(request.getEmail())) {
             throw new AccountAlreadyExistsException(
                     "An account already exists for this email"
@@ -51,6 +74,26 @@ public class AccountService {
                         )
                         .build();
                 Account saved = accountRepository.saveAndFlush(account);
+
+                int claimed = idempotencyRepository.claim(idempotencyKey, saved.getId());
+                if (claimed == 0) {
+                    accountRepository.delete(saved);
+
+                    AccountIdempotencyRecord winningRecord =
+                            idempotencyRepository.findByIdempotencyKey(idempotencyKey)
+                                    .orElseThrow(() -> new AccountCreationException(
+                                            "Idempotency record not found after claim conflict"
+                                    ));
+                    Account winningAccount = accountRepository.findById(winningRecord.getAccountId())
+                            .orElseThrow(() -> new AccountCreationException(
+                                    "Winning account not found for idempotency key: "
+                                            + idempotencyKey
+                            ));
+                    log.info("Concurrent duplicate request detected. Returning account: {}",
+                            winningAccount.getAccountNumber());
+                    return mapToResponse(winningAccount);
+                }
+
                 log.info("Account Created {}",saved.getAccountNumber());
                 return mapToResponse(saved);
 
