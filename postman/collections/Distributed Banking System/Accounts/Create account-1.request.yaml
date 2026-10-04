@@ -1,4 +1,5 @@
 $kind: http-request
+name: Create account
 url: "{{baseUrl}}/api/v1/account"
 method: POST
 headers:
@@ -13,4 +14,4 @@ body:
       "accountType": "SAVINGS",
       "initialDeposit": 10000.00
     }
-order: 2000
+order: 1800

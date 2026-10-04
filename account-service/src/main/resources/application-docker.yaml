@@ -5,7 +5,7 @@ spring:
   datasource:
     url: jdbc:postgresql://postgres:5432/accounts_db
     username: postgres
-    password: 1234
+    password: ${POSTGRES_PASSWORD:localdev}
 
   jpa:
     hibernate:
@@ -13,6 +13,11 @@ spring:
 
   kafka:
     bootstrap-servers: kafka:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        spring.json.add.type.headers: true
     consumer:
       group-id: account-service
       auto-offset-reset: earliest

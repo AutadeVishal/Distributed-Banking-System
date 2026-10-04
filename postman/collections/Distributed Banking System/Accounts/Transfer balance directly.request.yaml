@@ -1,8 +1,9 @@
 $kind: http-request
-url: "{{baseUrl}}/api/v1/account/transfer?senderAccountNumber={{accountNumber}}&receiverAccountNumber={{receiverAccountNumber}}&amount=100.00"
+url: "{{baseUrl}}/api/v1/account/transfer?senderAccountNumber={{accountNumber}}\
+  &receiverAccountNumber={{receiverAccountNumber}}&amount=100.00"
 method: PUT
 queryParams:
   senderAccountNumber: "{{accountNumber}}"
   receiverAccountNumber: "{{receiverAccountNumber}}"
   amount: "100.00"
-order: 6000
+order: 7000

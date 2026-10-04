@@ -4,7 +4,7 @@ spring:
   datasource:
     url: jdbc:postgresql://postgres:5432/transactions_db
     username: postgres
-    password: 1234
+    password: ${POSTGRES_PASSWORD:localdev}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:

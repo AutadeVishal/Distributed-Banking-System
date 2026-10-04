@@ -6,18 +6,25 @@ import com.banking.accountservice.entity.Account;
 import com.banking.accountservice.entity.AccountIdempotencyRecord;
 import com.banking.accountservice.entity.AccountStatus;
 import com.banking.accountservice.entity.AccountType;
-import com.banking.accountservice.exception.*;
+import com.banking.accountservice.exception.AccountNotFoundException;
+import com.banking.accountservice.exception.AccountAlreadyExistsException;
+import com.banking.accountservice.exception.AccountBlockedException;
+import com.banking.accountservice.exception.AccountCreationException;
+import com.banking.accountservice.exception.InsufficientBalanceException;
+import com.banking.accountservice.exception.AccountServiceException;
 import com.banking.accountservice.repository.AccountIdempotencyRepository;
 import com.banking.accountservice.repository.AccountRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.LocalDate;
 
 @Service
 @Slf4j
@@ -31,10 +38,6 @@ public class AccountService {
             CreateAccountRequest request,
             String idempotencyKey
     ){
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new IllegalArgumentException("Idempotency-Key header is required");
-        }
-
         log.info("Creating account for: {}", request.getEmail());
 
         AccountIdempotencyRecord existingRecord =
@@ -44,88 +47,106 @@ public class AccountService {
         if (existingRecord != null) {
             Account existingAccount = accountRepository.findById(existingRecord.getAccountId())
                     .orElseThrow(() -> new AccountCreationException(
-                            "Account not found for idempotency key: " + idempotencyKey
+                            "No Account Found for Existing Idempotency Key: "
+                                    + existingRecord.getIdempotencyKey()
                     ));
             log.info("Returning existing account for idempotency key: {}", idempotencyKey);
             return mapToResponse(existingAccount);
         }
 
-        if (accountRepository.existsAccountByEmail(request.getEmail())) {
+        if (
+                accountRepository.existsAccountByEmail(request.getEmail())
+        ) {
             throw new AccountAlreadyExistsException(
-                    "An account already exists for this email"
+                    "An account with the same email  already exists"
+            );
+        }
+        if (
+                accountRepository.existsByPhone(request.getPhone())
+        ) {
+            throw new AccountAlreadyExistsException(
+                    "An account with the same  phone already exists"
             );
         }
 
-        for(int attempt=0;attempt<3;attempt++){
-            try{
-                String accountNumber=generateAccountNumber();
-                Account account=Account.builder()
-                        .accountHolderName(request.getAccountHolderName())
-                        .email(request.getEmail())
-                        .phone(request.getPhone())
-                        .accountType(request.getAccountType())
-                        .balance(request.getInitialDeposit())
-                        .accountStatus(AccountStatus.ACTIVE)
-                        .accountNumber(accountNumber)
-                        .dailyTransactionLimit(
-                                request.getAccountType()== AccountType.SAVINGS
-                                        ? new BigDecimal(100000)
-                                        : new BigDecimal(500000)
-                        )
-                        .build();
-                Account saved = accountRepository.saveAndFlush(account);
 
-                int claimed = idempotencyRepository.claim(idempotencyKey, saved.getId());
-                if (claimed == 0) {
-                    accountRepository.delete(saved);
 
-                    AccountIdempotencyRecord winningRecord =
-                            idempotencyRepository.findByIdempotencyKey(idempotencyKey)
-                                    .orElseThrow(() -> new AccountCreationException(
-                                            "Idempotency record not found after claim conflict"
-                                    ));
-                    Account winningAccount = accountRepository.findById(winningRecord.getAccountId())
-                            .orElseThrow(() -> new AccountCreationException(
-                                    "Winning account not found for idempotency key: "
-                                            + idempotencyKey
-                            ));
-                    log.info("Concurrent duplicate request detected. Returning account: {}",
-                            winningAccount.getAccountNumber());
-                    return mapToResponse(winningAccount);
+        Account account = Account.builder()
+                .accountHolderName(request.getAccountHolderName())
+                .email(request.getEmail())
+                .phone(request.getPhone())
+                .accountType(request.getAccountType())
+                .balance(request.getInitialDeposit())
+                .accountStatus(AccountStatus.ACTIVE)
+                .dailyTransactionLimit(
+                        request.getAccountType()== AccountType.SAVINGS
+                                ? new BigDecimal(100000)
+                                : new BigDecimal(500000)
+                )
+                .dailyTransactionSpent(BigDecimal.ZERO)
+                .dailyTransactionDate(LocalDate.now())
+                .build();
+        Account saved = null;
+        try {
+            for (int attempt = 0; attempt < 3; attempt++) {
+                try {
+                    account.setAccountNumber(generateAccountNumber());
+                    saved = accountRepository.saveAndFlush(account);
+                    break;
+                } catch (DataIntegrityViolationException e) {
+                    if (!isConstraintViolation(e, "uk_account_number")
+                            || attempt == 2) {
+                        throw e;
+                    }
                 }
-
-                log.info("Account Created {}",saved.getAccountNumber());
-                return mapToResponse(saved);
-
             }
-            catch (DataIntegrityViolationException e) {
-                if (isAccountNumberCollision(e)) {
-                    log.warn(
-                            "Account number collision. Retrying attempt {}/3",
-                            attempt + 1
-                    );
-                    continue;
-                }
 
-                throw e;
+            int claimed = idempotencyRepository.claim(idempotencyKey, saved.getId());
+            if (claimed == 0) {
+                accountRepository.delete(saved);
+
+                AccountIdempotencyRecord winningRecord =
+                        idempotencyRepository.findByIdempotencyKey(idempotencyKey)
+                                .orElseThrow(()->new AccountCreationException(
+                                        "Not able to find winning Idempotency Key :"+idempotencyKey
+                                ));
+                Account winningAccount = accountRepository.findById(winningRecord.getAccountId()).get();
+                log.info("Concurrent duplicate request detected. Returning account: {}",
+                        winningAccount.getAccountNumber());
+                return mapToResponse(winningAccount);
             }
+
+            log.info("Account Created {}", saved.getAccountNumber());
+            return mapToResponse(saved);
         }
-        throw new AccountCreationException(
-                "Unable to create account. Please try again."
-        );
+        catch(DataIntegrityViolationException e) {
+            if (isConstraintViolation(e, "uk_account_number")) {
+                throw new AccountCreationException(
+                        "Unable to generate a unique account number for email"+request.getEmail()
+
+                );
+            }
+            throw new AccountCreationException(
+                    "Unable to create the account"
+
+            );
+        }
+
     }
 
     public AccountResponse getAccount(String accountNumber){
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(() ->
-                        new AccountNotFoundException("Account not found"));
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "Account not found"
+                ));
         return mapToResponse(account);
     }
 
     public BigDecimal getBalance(String accountNumber){
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(() ->
-                        new AccountNotFoundException("Account not found"));
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "Account not found"
+                ));
         return account.getBalance();
     }
     /*
@@ -134,7 +155,9 @@ public class AccountService {
     public void lockAccount(String accountNumber){
         log.info("Blocking Account {}",accountNumber);
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new AccountNotFoundException("Account not found"));
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "Account not found"
+                ));
         account.setAccountStatus(AccountStatus.BLOCKED);
         accountRepository.save(account);
         log.info("Account Blocked:{}",account.getAccountNumber());
@@ -142,7 +165,9 @@ public class AccountService {
     public void unlockAccount(String accountNumber){
         log.info("Unlocking Account {}",accountNumber);
         Account account=accountRepository.findByAccountNumber(accountNumber)
-                .orElseThrow(()->new AccountNotFoundException("Account not found"));
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "Account not found"
+                ));
         account.setAccountStatus(AccountStatus.ACTIVE);
         accountRepository.save(account);
         log.info("Account unlocked:{}",account.getAccountNumber());
@@ -152,37 +177,95 @@ public class AccountService {
     deduct balance from sender
     called by transaction service
      */
-    @Transactional
-    public void transfer(String senderAccountNumber,
-                         String receiverAccountNumber,
-                         BigDecimal amount) {
+    @Transactional(timeout = 10)
+    public void transfer(
+            String senderAccountNumber,
+            String receiverAccountNumber,
+            BigDecimal amount
+    ) {
         if (senderAccountNumber.equals(receiverAccountNumber)) {
-            throw new InvalidTransferException("Sender and receiver accounts must be different");
+            throw new AccountServiceException("Sender and receiver accounts must be different");
         }
-        if (amount == null || amount.signum() <= 0) {
-            throw new InvalidTransferException("Transfer amount must be positive");
+        log.info(
+                "Settlement validation started - amount: {} from: {} to: {}",
+                amount,
+                senderAccountNumber,
+                receiverAccountNumber
+        );
+        // Lock accounts in a consistent order to prevent deadlocks
+        String firstAccountNumber;
+        String secondAccountNumber;
+
+        if (senderAccountNumber.compareTo(receiverAccountNumber) < 0) {
+            firstAccountNumber = senderAccountNumber;
+            secondAccountNumber = receiverAccountNumber;
+        } else {
+            firstAccountNumber = receiverAccountNumber;
+            secondAccountNumber = senderAccountNumber;
         }
 
-        Account sender = accountRepository.findByAccountNumber(senderAccountNumber)
-                .orElseThrow(() -> new AccountNotFoundException("Account not found"));
-        Account receiver = accountRepository.findByAccountNumber(receiverAccountNumber)
-                .orElseThrow(() -> new AccountNotFoundException("Account not found"));
+        // Acquire lock one by one
+        Account first = accountRepository
+                .findByAccountNumberForUpdate(firstAccountNumber)
+                .orElseThrow(()->new AccountNotFoundException("Account not found"));
+
+        Account second = accountRepository
+                .findByAccountNumberForUpdate(secondAccountNumber)
+                .orElseThrow(() -> new AccountNotFoundException(
+                        "Receiver account not found"
+                ));
+
+        // Restore sender/receiver roles
+        Account sender;
+        Account receiver;
+
+        if (senderAccountNumber.equals(first.getAccountNumber())) {
+            sender = first;
+            receiver = second;
+        } else {
+            sender = second;
+            receiver = first;
+        }
 
         if (sender.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new AccountInactiveException("Sender account is not active");
+            log.warn("Settlement rejected - sender account {} is not active", senderAccountNumber);
+            throw new AccountBlockedException("Sender account is blocked");
         }
         if (receiver.getAccountStatus() != AccountStatus.ACTIVE) {
-            throw new AccountInactiveException("Receiver account is not active");
+            log.warn("Settlement rejected - receiver account {} is not active", receiverAccountNumber);
+            throw new AccountBlockedException("Receiver account is blocked");
         }
         if (sender.getBalance().compareTo(amount) < 0) {
+            log.warn(
+                    "Settlement rejected - insufficient balance for sender {}; requested: {}, available: {}",
+                    senderAccountNumber,
+                    amount,
+                    sender.getBalance()
+            );
             throw new InsufficientBalanceException("Insufficient balance");
         }
+        LocalDate today = LocalDate.now();
+        if (!today.equals(sender.getDailyTransactionDate())) {
+            sender.setDailyTransactionDate(today);
+            sender.setDailyTransactionSpent(BigDecimal.ZERO);
+        }
+        if (sender.getDailyTransactionSpent().add(amount)
+                .compareTo(sender.getDailyTransactionLimit()) > 0) {
+            throw new AccountServiceException("Daily transaction limit exceeded");
+        }
 
+        // Both accounts are already locked so now only update them
         sender.setBalance(sender.getBalance().subtract(amount));
         receiver.setBalance(receiver.getBalance().add(amount));
-        accountRepository.save(sender);
-        accountRepository.save(receiver);
-        log.info("Transferred {} from {} to {}", amount, senderAccountNumber, receiverAccountNumber);
+        sender.setDailyTransactionSpent(sender.getDailyTransactionSpent().add(amount));
+
+
+        log.info(
+                "Transferred {} from {} to {}",
+                amount,
+                senderAccountNumber,
+                receiverAccountNumber
+        );
     }
 
     private AccountResponse mapToResponse(Account account){
@@ -203,20 +286,31 @@ public class AccountService {
     private final SecureRandom random = new SecureRandom();
 
     private String generateAccountNumber() {
-        return String.format(
-                "%012d",
-                random.nextLong(1_000_000_000_000L)
-        );
+        StringBuilder accountNumber = new StringBuilder(20);
+        accountNumber.append(1 + random.nextInt(9));
+        for (int i = 0; i < 19; i++) {
+            accountNumber.append(random.nextInt(10));
+        }
+        return accountNumber.toString();
     }
 
-    private boolean isAccountNumberCollision(DataIntegrityViolationException ex) {
-        Throwable cause = ex;
+    private boolean isConstraintViolation(
+            DataIntegrityViolationException exception,
+            String constraintName
+    ) {
+        Throwable cause = exception;
+
         while (cause != null) {
-            if (cause instanceof PSQLException psql) {
-                return "uk_account_number".equals(
-                        psql.getServerErrorMessage().getConstraint()
-                );
+
+            if (cause instanceof PSQLException psqlException) {
+
+                ServerErrorMessage error =
+                        psqlException.getServerErrorMessage();
+
+                return error != null
+                        && constraintName.equals(error.getConstraint());
             }
+
             cause = cause.getCause();
         }
 

@@ -9,9 +9,16 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "transactions")
+@Table(
+        name = "transactions",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_transaction_reference_number",
+                columnNames = "reference_number"
+        )
+)
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
@@ -25,11 +32,10 @@ public class Transaction {
     @Column(
             name = "reference_number",
             nullable = false,
-            unique = true,
             updatable = false,
-            length = 16
+            columnDefinition = "uuid"
     )
-    private String referenceNumber;
+    private UUID referenceNumber;
 
     @Column(nullable = false)
     private String senderAccountNumber;
@@ -54,7 +60,7 @@ public class Transaction {
     @Enumerated(EnumType.STRING)
     private TransactionStatus transactionStatus;
 
-    @Column(length = 255)
+    @Column(name = "failure_reason", length = 500)
     private String failureReason;
 
     @CreationTimestamp

@@ -1,10 +1,20 @@
 package com.banking.error;
 
-import java.time.LocalDateTime;
+public class ErrorResponse {
 
-public record ErrorResponse(
-        String code,
-        String message,
-        LocalDateTime timestamp
-) {
+    private final String code;
+    private final String message;
+
+    public ErrorResponse(String code, String message) {
+        this.code = code;
+        this.message = message;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public String getMessage() {
+        return message;
+    }
 }

@@ -14,7 +14,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class FraudDetectionEventConsumer {
     private final FraudDetectionService fraudDetectionService;
-
     /*
         Listens to transaction.initiated topic send by transaction service
         every transaction goes through this befor completion
@@ -25,11 +24,6 @@ public class FraudDetectionEventConsumer {
             @Payload TransactionInitiatedEvent event
             ){
         log.info("Received Transaction for Fraud Check : {}",event.transactionId());
-        try{
-            fraudDetectionService.checkTransaction(event);
-        }catch(Exception e){
-            log.error("Error processing transaction fraud check event", e);
-            throw e;
-        }
+        fraudDetectionService.checkTransaction(event);
     }
 }

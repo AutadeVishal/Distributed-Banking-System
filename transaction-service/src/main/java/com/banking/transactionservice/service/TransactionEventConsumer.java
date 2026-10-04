@@ -2,14 +2,15 @@ package com.banking.transactionservice.service;
 
 import com.banking.events.OTPGeneratedEvent;
 import com.banking.events.TransactionCleanEvent;
+import com.banking.events.TransactionFailedEvent;
+import com.banking.events.TransactionSettlementCompletedEvent;
 import com.banking.events.VerificationRequiredEvent;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.repository.TransactionRepository;
-import com.banking.transactionservice.exception.TransactionNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -25,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class TransactionEventConsumer {
     private final TransactionRepository transactionRepository;
-    private final RedisTemplate<String,String> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private static final long OTP_EXPIRY_MINUTES=5;
     private final KafkaTemplate<String,Object> kafkaTemplate;
     private final TransactionService transactionService;
@@ -38,18 +39,25 @@ public class TransactionEventConsumer {
     public void consumeVerificationRequired(
             @Payload VerificationRequiredEvent verificationRequiredEvent
             ){
-        try{
             Long transactionId=verificationRequiredEvent.transactionId();
             String senderAccountNumber=verificationRequiredEvent.senderAccountNumber();
             String reason=verificationRequiredEvent.reason();
             BigDecimal amount=verificationRequiredEvent.amount();
-            log.info("Verification Required - transaction: {} reason : {}",transactionId,reason);
-            Transaction transaction=transactionRepository.findById(transactionId)
-                    .orElseThrow(()->new TransactionNotFoundException("Transaction not found: " + transactionId));
+            log.info(
+                    "OTP FLOW - Verification required for transaction: {} amount: {} reason: {}",
+                    transactionId,
+                    amount,
+                    reason
+            );
+            Transaction transaction=transactionRepository.findById(transactionId).get();
 
             if(transaction.getTransactionStatus() != TransactionStatus.PROCESSING
                     && transaction.getTransactionStatus() != TransactionStatus.PENDING_VERIFICATION){
-                log.warn(" Transaction : {} not awaiting verification -skipping",transactionId);
+                log.warn(
+                        "OTP FLOW - Transaction {} is not awaiting verification; current status: {}",
+                        transactionId,
+                        transaction.getTransactionStatus()
+                );
                 return ;
             }
             //generate six digit OTP
@@ -64,7 +72,11 @@ public class TransactionEventConsumer {
 
                     transaction.setTransactionStatus(TransactionStatus.PENDING_VERIFICATION);
                     transactionRepository.save(transaction);
-                    log.info("OTP Generated for Transaction : {} expires in {} min",transactionId,OTP_EXPIRY_MINUTES);
+                    log.info(
+                            "OTP FLOW - OTP stored and transaction {} moved to PENDING_VERIFICATION; expires in {} min",
+                            transactionId,
+                            OTP_EXPIRY_MINUTES
+                    );
 
                     //notify user
 
@@ -76,12 +88,12 @@ public class TransactionEventConsumer {
                     amount
             );
             kafkaTemplate.send(TRANSACTION_OTP_GENERATED_TOPIC,transactionId.toString(),otpGeneratedEvent);
+            log.info(
+                    "OTP FLOW - OTP notification event published for transaction {}",
+                    transactionId
+            );
 
 
-        }catch(Exception e){
-            log.error("Error handling verification required event", e);
-            throw e;
-        }
     }
 
 
@@ -90,12 +102,39 @@ public class TransactionEventConsumer {
     public void consumeFraudCheckClean(
             @Payload TransactionCleanEvent cleanEvent
     ){
-        try{
+            log.info(
+                    "SAGA - Fraud clean event received for transaction {}",
+                    cleanEvent.transactionId()
+            );
             transactionService.processCleanResult(cleanEvent.transactionId());
+    }
 
-        }catch(Exception e){
-            log.error("Error processing fraud check clean result event", e);
-            throw e;
-        }
+    @KafkaListener(topics = "transaction.settlement.failed")
+    public void consumeSettlementFailed(
+            @Payload TransactionFailedEvent failedEvent
+    ) {
+        log.warn(
+                "SAGA - Failure event received for transaction {} title: {} reason: {}",
+                failedEvent.transactionId(),
+                failedEvent.title(),
+                failedEvent.reason()
+        );
+        transactionService.failTransaction(
+                failedEvent.transactionId(),
+                failedEvent.title(),
+                failedEvent.reason(),
+                false
+        );
+    }
+
+    @KafkaListener(topics = "transaction.settlement.completed")
+    public void consumeSettlementCompleted(
+            @Payload TransactionSettlementCompletedEvent event
+    ) {
+        log.info(
+                "SAGA - Settlement completed event received for transaction {}",
+                event.transactionId()
+        );
+        transactionService.handleSettlementCompleted(event);
     }
 }

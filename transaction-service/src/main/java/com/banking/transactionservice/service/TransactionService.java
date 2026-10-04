@@ -1,8 +1,10 @@
 package com.banking.transactionservice.service;
 
-import com.banking.events.TransactionCompletedEvent;
 import com.banking.events.TransactionFailedEvent;
 import com.banking.events.TransactionInitiatedEvent;
+import com.banking.events.TransactionCompletedEvent;
+import com.banking.events.TransactionSettlementCompletedEvent;
+import com.banking.events.TransactionSettlementRequestedEvent;
 import com.banking.events.VerificationRequiredEvent;
 import com.banking.events.FraudDetectedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
@@ -12,18 +14,19 @@ import com.banking.transactionservice.entity.IdempotencyRecord;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
 import com.banking.transactionservice.entity.TransactionType;
+import com.banking.transactionservice.exception.TransactionNotFoundException;
+import com.banking.transactionservice.exception.TransactionCreationException;
+import com.banking.transactionservice.exception.TransactionStateException;
 import com.banking.transactionservice.repository.IdempotencyRepository;
 import com.banking.transactionservice.repository.TransactionRepository;
-import com.banking.transactionservice.exception.TransactionNotFoundException;
-import com.banking.transactionservice.exception.TransactionStateException;
-import com.banking.transactionservice.exception.TransactionConsistencyException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import feign.FeignException;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -32,6 +35,9 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.concurrent.TimeUnit;
 import java.util.UUID;
+import com.github.f4b6a3.uuid.UuidCreator;
+import org.postgresql.util.PSQLException;
+import org.postgresql.util.ServerErrorMessage;
 
 @Service
 @Slf4j
@@ -41,21 +47,21 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountServiceClient accountServiceClient;
     private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final RedisTemplate<Object, Object> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final IdempotencyRepository idempotencyRepository;
-
     private static final String TRANSACTION_INITIATED_TOPIC =
             "transaction.initiated";
-
-    private static final String TRANSACTION_COMPLETED_TOPIC =
-            "transaction.completed";
 
     private static final String FRAUD_DETECTED_TOPIC =
             "fraud.detected";
 
-    private static final String TRANSACTION_FAILED_TOPIC =
-            "transaction.failed";
+    private static final String TRANSACTION_SETTLEMENT_REQUESTED_TOPIC =
+            "transaction.settlement.requested";
 
+    private static final String TRANSACTION_FAILED_TOPIC =
+            "notification.transaction.failed";
+    private static final String TRANSACTION_COMPLETED_TOPIC =
+            "notification.transaction.completed";
     private static final int MAX_OTP_ATTEMPTS = 3;
     private static final long OTP_EXPIRY_MINUTES = 5;
 
@@ -64,6 +70,10 @@ public class TransactionService {
             TransferRequest request,
             String idempotencyKey
     ) {
+        if (request.getSenderAccountNumber()
+                .equals(request.getReceiverAccountNumber())) {
+            throw new TransactionCreationException("Sender and receiver accounts must be different");
+        }
 
         log.info(
                 "SAGA START - Transfer amount: {} from: {} to: {}",
@@ -83,9 +93,9 @@ public class TransactionService {
                     transactionRepository
                             .findById(existingRecord.getTransactionId())
                             .orElseThrow(() ->
-                                    new TransactionConsistencyException(
-                                            "Transaction not found for idempotency key: "
-                                                    + idempotencyKey
+                                    new TransactionCreationException(
+                                            "No Transaction found for transaction Id: "
+                                                    + existingRecord.getTransactionId()
                                     )
                             );
 
@@ -98,12 +108,8 @@ public class TransactionService {
         }
 
 
-        String referenceNumber = generateReferenceNumber();
-
-
         Transaction transaction =
                 Transaction.builder()
-                        .referenceNumber(referenceNumber)
                         .senderAccountNumber(
                                 request.getSenderAccountNumber()
                         )
@@ -119,8 +125,21 @@ public class TransactionService {
                         .build();
 
 
-        Transaction savedTransaction =
-                transactionRepository.saveAndFlush(transaction);
+        Transaction savedTransaction = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                transaction.setReferenceNumber(generateReferenceNumber());
+                savedTransaction = transactionRepository.saveAndFlush(transaction);
+                break;
+            } catch (DataIntegrityViolationException e) {
+                if (!isConstraintViolation(e, "uk_transaction_reference_number")
+                        || attempt == 2) {
+                    throw new TransactionCreationException(
+                            "Unable to create a unique transaction reference"
+                    );
+                }
+            }
+        }
 
         /*
           Atomic idempotency claim:
@@ -144,22 +163,16 @@ public class TransactionService {
             IdempotencyRecord winningRecord =
                     idempotencyRepository
                             .findByIdempotencyKey(idempotencyKey)
-                            .orElseThrow(() ->
-                                    new TransactionConsistencyException(
-                                            "Idempotency record not found after claim conflict"
-                                    )
-                            );
+                            .orElseThrow(()->
+                                    new TransactionCreationException("Idempotency Key  found Idempotency Key:"+idempotencyKey));
 
             Transaction winningTransaction =
                     transactionRepository
                             .findById(
                                     winningRecord.getTransactionId()
                             )
-                            .orElseThrow(() ->
-                                    new TransactionConsistencyException(
-                                            "Winning transaction not found"
-                                    )
-                            );
+                            .orElseThrow(()->
+                                  new  TransactionCreationException("Transaction not found for winning record having Idempotency Key:"+idempotencyKey));
 
             log.info(
                     "Concurrent duplicate request detected. " +
@@ -174,12 +187,13 @@ public class TransactionService {
           Only the request that successfully claimed
           the idempotency key starts the Saga.
          */
+        Transaction transactionForSaga = savedTransaction;
         TransactionSynchronizationManager.registerSynchronization(
                 new TransactionSynchronization() {
 
                     @Override
                     public void afterCommit() {
-                        startSaga(savedTransaction);
+                        startSaga(transactionForSaga);
                     }
                 }
         );
@@ -207,10 +221,15 @@ public class TransactionService {
                 TRANSACTION_INITIATED_TOPIC,
                 String.valueOf(transaction.getId()),
                 event
-        );
+        ).whenComplete((result, error) -> {
+            if (error != null) {
+                log.error("Could not publish transaction {} initiation; it remains PROCESSING",
+                        transaction.getId(), error);
+            }
+        });
 
         log.info(
-                "SAGA - TransactionInitiatedEvent published: {}",
+                "SAGA - TransactionInitiatedEvent queued: {}",
                 transaction.getId()
         );
     }
@@ -220,7 +239,7 @@ public class TransactionService {
     ) {
 
         return transactionRepository
-                .findBySenderAccountNumberOrderByCreatedAtDesc(
+                .findByEitherAccountOrderByCreatedAtDesc(
                         accountNumber
                 )
                 .stream()
@@ -255,6 +274,7 @@ public class TransactionService {
                 .build();
     }
 
+    @Transactional
     public TransactionResponse verifyOTP(
             Long transactionId,
             String otp
@@ -265,20 +285,17 @@ public class TransactionService {
                 transactionId
         );
 
+        Boolean lockAcquired = redisTemplate.opsForValue().setIfAbsent(
+                "verification:lock:" + transactionId, "1", 30, TimeUnit.SECONDS);
+        if (!Boolean.TRUE.equals(lockAcquired)) {
+            return mapToResponse(findTransaction(transactionId));
+        }
+        try {
         Transaction transaction =
-                transactionRepository
-                        .findById(transactionId)
-                        .orElseThrow(() ->
-                                new TransactionNotFoundException(
-                                        "Transaction : "
-                                                + transactionId
-                                                + " Not Found"
-                                )
-                        );
+                transactionRepository.findByIdForUpdate(transactionId).orElseThrow(
+                        () -> new TransactionNotFoundException("Transaction not found"));
 
-        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
-                || transaction.getTransactionStatus() == TransactionStatus.FAILED
-                || transaction.getTransactionStatus() == TransactionStatus.SETTLEMENT_FAILED) {
+        if (transaction.getTransactionStatus() != TransactionStatus.PENDING_VERIFICATION) {
             log.info(
                     "Skipping stale OTP verification for transaction {} in status {}",
                     transactionId,
@@ -322,23 +339,19 @@ public class TransactionService {
 
             if (attempts != null && attempts >= MAX_OTP_ATTEMPTS) {
                 String reason = "Account locked after 3 incorrect OTP submissions";
-                try {
-                    accountServiceClient.lockAccount(
-                            transaction.getSenderAccountNumber()
-                    );
-                } catch (Exception ex) {
-                    log.error(
-                            "Could not lock sender account {} after OTP limit for transaction {}",
-                            transaction.getSenderAccountNumber(),
-                            transaction.getId(),
-                            ex
-                    );
-                }
+                accountServiceClient.lockAccount(
+                        transaction.getSenderAccountNumber()
+                );
 
                 redisTemplate.delete(otpKey);
                 redisTemplate.delete(attemptsKey);
                 publishFraudDetected(transaction, reason);
-                failTransaction(transaction, reason);
+                failTransaction(
+                        transaction.getId(),
+                        "Transaction Rejected",
+                        reason,
+                        true
+                );
             } else {
                 log.info(
                         "Incorrect OTP attempt {} of {} for transaction {}",
@@ -358,16 +371,18 @@ public class TransactionService {
 
         redisTemplate.delete(otpKey);
 
-        completeTransaction(transaction);
+        transaction.setTransactionStatus(TransactionStatus.PROCESSING);
+        transactionRepository.save(transaction);
+        publishSettlementRequested(transaction);
 
         return mapToResponse(transaction);
+        } finally {
+            redisTemplate.delete("verification:lock:" + transactionId);
+        }
     }
 
     public TransactionResponse requestNewOtp(Long transactionId) {
-        Transaction transaction = transactionRepository.findById(transactionId)
-                .orElseThrow(() -> new TransactionNotFoundException(
-                        "Transaction : " + transactionId + " Not Found"
-                ));
+        Transaction transaction = findTransaction(transactionId);
 
         if (transaction.getTransactionStatus() != TransactionStatus.PENDING_VERIFICATION) {
             throw new TransactionStateException(
@@ -386,6 +401,11 @@ public class TransactionService {
                 String.valueOf(transaction.getId()),
                 event
         );
+        log.info(
+                "OTP FLOW - Renewal requested for transaction {}; reason: {}",
+                transaction.getId(),
+                event.reason()
+        );
         return mapToResponse(transaction);
     }
 
@@ -394,17 +414,17 @@ public class TransactionService {
         Transaction transaction =
                 transactionRepository
                         .findById(transactionId)
-                        .orElseThrow(() ->
-                                new TransactionNotFoundException(
-                                        "Transaction : "
-                                                + transactionId
-                                                + " Not Found"
-                                )
-                        );
+                        .orElseThrow(()->
+                                new TransactionCreationException("Transaction not found :"+transactionId));
+
+        log.info(
+                "SAGA - Fraud check passed for transaction {}; requesting settlement",
+                transactionId
+        );
 
         if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
                 || transaction.getTransactionStatus() == TransactionStatus.FAILED
-                || transaction.getTransactionStatus() == TransactionStatus.SETTLEMENT_FAILED) {
+                ) {
             log.info(
                     "Transaction {} already settled or failed; ignoring clean result",
                     transactionId
@@ -412,31 +432,89 @@ public class TransactionService {
             return;
         }
 
-        completeTransaction(transaction);
+        publishSettlementRequested(transaction);
     }
 
-    private void completeTransaction(
-            Transaction transaction
+    public void failTransaction(
+            Long transactionId,
+            String title,
+            String reason,
+            boolean publishNotification
     ) {
-
-        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED) {
-            log.info("Transaction {} already completed. skipping settlement.", transaction.getId());
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new TransactionNotFoundException(
+                        "Transaction not found"
+                ));
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+            log.info(
+                    "SAGA - Ignoring failure for transaction {} already in status {}",
+                    transactionId,
+                    transaction.getTransactionStatus()
+            );
             return;
         }
 
-        try {
-            accountServiceClient.transfer(
-                    transaction.getSenderAccountNumber(),
-                    transaction.getReceiverAccountNumber(),
-                    transaction.getAmount()
-            );
-        } catch (Exception ex) {
-            log.error(
-                    "Settlement failed for transaction {}.",
-                    transaction.getId(),
-                    ex
-            );
-            failSettlement(transaction, settlementFailureReason(ex));
+        String failureReason = title + ": " + reason;
+        transaction.setFailureReason(
+                failureReason
+        );
+        transaction.setTransactionStatus(TransactionStatus.FAILED);
+        transactionRepository.save(transaction);
+        log.warn(
+                "SAGA - Transaction {} failed; amount: {} from: {} to: {}; reason: {}",
+                transaction.getId(),
+                transaction.getAmount(),
+                transaction.getSenderAccountNumber(),
+                transaction.getReceiverAccountNumber(),
+                failureReason
+        );
+
+        if (publishNotification) {
+            publishFailureNotification(transaction, title, reason);
+        }
+    }
+
+    private void publishFailureNotification(Transaction transaction, String title, String reason) {
+        TransactionFailedEvent event = new TransactionFailedEvent(
+                transaction.getId(),
+                transaction.getSenderAccountNumber(),
+                transaction.getReceiverAccountNumber(),
+                transaction.getAmount(),
+                title,
+                reason
+        );
+        kafkaTemplate.send(
+                TRANSACTION_FAILED_TOPIC,
+                String.valueOf(transaction.getId()),
+                event
+        ).whenComplete((result, error) -> {
+            if (error != null) {
+                log.error("Could not publish failure notification for transaction {}",
+                        transaction.getId(), error);
+            }
+        });
+        log.warn(
+                "SAGA - Failure event queued for transaction {} reason: {}",
+                transaction.getId(),
+                reason
+        );
+    }
+
+    public void handleSettlementCompleted(
+            TransactionSettlementCompletedEvent event
+    ) {
+        Transaction transaction = transactionRepository.findById(event.transactionId())
+                .orElseThrow();
+
+        log.info(
+                "SAGA - Settlement completed event received for transaction {}",
+                event.transactionId()
+        );
+
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+            log.info("Ignoring stale settlement result for transaction {}", event.transactionId());
             return;
         }
 
@@ -450,20 +528,15 @@ public class TransactionService {
 
         transactionRepository.save(transaction);
 
-        TransactionCompletedEvent event =
+        kafkaTemplate.send(TRANSACTION_COMPLETED_TOPIC,
+                String.valueOf(transaction.getId()),
                 new TransactionCompletedEvent(
                         transaction.getId(),
                         transaction.getSenderAccountNumber(),
                         transaction.getReceiverAccountNumber(),
                         transaction.getAmount(),
                         transaction.getDescription()
-                );
-
-        kafkaTemplate.send(
-                TRANSACTION_COMPLETED_TOPIC,
-                String.valueOf(transaction.getId()),
-                event
-        );
+                ));
 
         log.info(
                 "SAGA COMPLETE - transaction : {} completed",
@@ -471,63 +544,32 @@ public class TransactionService {
         );
     }
 
-    private void failTransaction(Transaction transaction, String reason) {
-        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED) {
-            return;
-        }
+    private void publishSettlementRequested(Transaction transaction) {
+        TransactionSettlementRequestedEvent event =
+                new TransactionSettlementRequestedEvent(
+                        transaction.getId(),
+                        transaction.getSenderAccountNumber(),
+                        transaction.getReceiverAccountNumber(),
+                        transaction.getAmount()
+                );
 
-        transaction.setFailureReason(reason);
-        transaction.setTransactionStatus(TransactionStatus.FAILED);
-        transactionRepository.save(transaction);
-
-        TransactionFailedEvent event = new TransactionFailedEvent(
-                transaction.getId(),
-                transaction.getSenderAccountNumber(),
-                transaction.getReceiverAccountNumber(),
-                transaction.getAmount(),
-                reason
-        );
         kafkaTemplate.send(
-                TRANSACTION_FAILED_TOPIC,
+                TRANSACTION_SETTLEMENT_REQUESTED_TOPIC,
                 String.valueOf(transaction.getId()),
                 event
-        );
-    }
-
-    private void failSettlement(Transaction transaction, String reason) {
-        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
-                || transaction.getTransactionStatus() == TransactionStatus.SETTLEMENT_FAILED) {
-            return;
-        }
-
-        transaction.setFailureReason(reason);
-        transaction.setTransactionStatus(TransactionStatus.SETTLEMENT_FAILED);
-        transactionRepository.save(transaction);
-
-        TransactionFailedEvent event = new TransactionFailedEvent(
+        ).whenComplete((result, error) -> {
+            if (error != null) {
+                log.error("Could not publish settlement request for transaction {}",
+                        transaction.getId(), error);
+            }
+        });
+        log.info(
+                "SAGA - Settlement request queued for transaction {}; amount: {} from: {} to: {}",
                 transaction.getId(),
-                transaction.getSenderAccountNumber(),
-                transaction.getReceiverAccountNumber(),
                 transaction.getAmount(),
-                reason
+                transaction.getSenderAccountNumber(),
+                transaction.getReceiverAccountNumber()
         );
-        kafkaTemplate.send(
-                TRANSACTION_FAILED_TOPIC,
-                String.valueOf(transaction.getId()),
-                event
-        );
-    }
-
-    private String settlementFailureReason(Exception ex) {
-        if (ex instanceof FeignException feignException) {
-            return switch (feignException.status()) {
-                case 400 -> "ACCOUNT_TRANSFER_REJECTED";
-                case 403 -> "ACCOUNT_INACTIVE";
-                case 404 -> "ACCOUNT_NOT_FOUND";
-                default -> "ACCOUNT_SERVICE_UNAVAILABLE";
-            };
-        }
-        return "SETTLEMENT_ERROR";
     }
 
     private void publishFraudDetected(Transaction transaction, String reason) {
@@ -546,33 +588,36 @@ public class TransactionService {
     public TransactionResponse getTransaction(
             Long transactionId
     ) {
-
-
-        Transaction transaction =
-                transactionRepository
-                        .findById(transactionId)
-                        .orElseThrow(() ->
-                                new TransactionNotFoundException(
-                                        "Transaction : "
-                                                + transactionId
-                                                + " Not Found"
-                                )
-                        );
+        Transaction transaction = findTransaction(transactionId);
 
         return mapToResponse(transaction);
     }
 
-    private String generateReferenceNumber() {
-        String referenceNumber;
-        do {
-            referenceNumber = "TXN-" + String.format(
-                    "%012d",
-                    Math.floorMod(
-                            UUID.randomUUID().getMostSignificantBits(),
-                            1_000_000_000_000L
-                    )
-            );
-        } while (transactionRepository.existsByReferenceNumber(referenceNumber));
-        return referenceNumber;
+    private Transaction findTransaction(Long transactionId) {
+        return transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new TransactionNotFoundException(
+                        "Transaction not found"
+                ));
+    }
+
+    private UUID generateReferenceNumber() {
+        return UuidCreator.getTimeOrderedEpoch();
+    }
+
+    private boolean isConstraintViolation(
+            DataIntegrityViolationException exception,
+            String constraintName
+    ) {
+        Throwable cause = exception;
+
+        while (cause != null) {
+            if (cause instanceof PSQLException psqlException) {
+                ServerErrorMessage error = psqlException.getServerErrorMessage();
+                return error != null && constraintName.equals(error.getConstraint());
+            }
+            cause = cause.getCause();
+        }
+
+        return false;
     }
 }

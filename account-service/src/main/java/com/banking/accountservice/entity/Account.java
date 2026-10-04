@@ -10,6 +10,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 @Entity
 @Data
@@ -63,6 +64,11 @@ public class Account {
 
     @Column(nullable = false,precision = 15,scale=2)
     private BigDecimal dailyTransactionLimit;
+
+    @Column(nullable = false, precision = 15, scale = 2)
+    private BigDecimal dailyTransactionSpent = BigDecimal.ZERO;
+
+    private LocalDate dailyTransactionDate;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

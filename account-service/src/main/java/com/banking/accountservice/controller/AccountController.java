@@ -59,13 +59,4 @@ public class AccountController {
         return ResponseEntity.ok("Account Number Unlocked Successfully");
     }
 
-    @PutMapping("/transfer")
-    public ResponseEntity<String> transfer(
-            @RequestParam("senderAccountNumber") String senderAccountNumber,
-            @RequestParam("receiverAccountNumber") String receiverAccountNumber,
-            @RequestParam("amount") BigDecimal amount
-    ) {
-        accountService.transfer(senderAccountNumber, receiverAccountNumber, amount);
-        return ResponseEntity.ok("Transfer completed successfully");
-    }
 }

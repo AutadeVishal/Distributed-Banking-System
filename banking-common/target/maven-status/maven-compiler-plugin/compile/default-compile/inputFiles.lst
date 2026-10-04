@@ -7,4 +7,6 @@ C:\My Files\Distributed-Banking-System\banking-common\src\main\java\com\banking\
 C:\My Files\Distributed-Banking-System\banking-common\src\main\java\com\banking\events\TransactionCompletedEvent.java
 C:\My Files\Distributed-Banking-System\banking-common\src\main\java\com\banking\events\TransactionFailedEvent.java
 C:\My Files\Distributed-Banking-System\banking-common\src\main\java\com\banking\events\TransactionInitiatedEvent.java
+C:\My Files\Distributed-Banking-System\banking-common\src\main\java\com\banking\events\TransactionSettlementCompletedEvent.java
+C:\My Files\Distributed-Banking-System\banking-common\src\main\java\com\banking\events\TransactionSettlementRequestedEvent.java
 C:\My Files\Distributed-Banking-System\banking-common\src\main\java\com\banking\events\VerificationRequiredEvent.java

@@ -1,4 +1,4 @@
 $kind: http-request
 url: "{{baseUrl}}/api/v1/account/{{accountNumber}}/lock"
 method: PUT
-order: 4000
+order: 5000

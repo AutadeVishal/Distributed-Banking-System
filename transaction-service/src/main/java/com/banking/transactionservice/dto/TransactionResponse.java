@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Data
 @NoArgsConstructor
@@ -17,7 +18,7 @@ import java.time.LocalDateTime;
 public class TransactionResponse {
 
     private Long transactionId;
-    private String referenceNumber;
+    private UUID referenceNumber;
     private String senderAccountNumber;
     private String receiverAccountNumber;
     private BigDecimal amount;
