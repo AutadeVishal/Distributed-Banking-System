@@ -1,5 +1,5 @@
 $kind: collection
-description: Requests for the account, transaction, and payment APIs. The collection uses the API gateway by default.
+description: Requests for the account and transaction APIs. The collection uses the API gateway by default.
 variables:
   baseUrl: http://localhost:8080
   accountNumber: "100000000001"

@@ -83,24 +83,6 @@ services:
       kafka: { condition: service_healthy }
     ports:
       - "8082:8082"
-  payment-service:
-    image: payment-service:1.0
-    container_name: payment-service
-    build:
-      context: .
-      args:
-        SERVICE: payment-service
-    environment:
-      SPRING_PROFILES_ACTIVE: docker
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
-      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
-    depends_on:
-      postgres: { condition: service_healthy }
-      kafka: { condition: service_healthy }
-    ports:
-      - "8083:8083"
   fraud-detection-service:
     image: fraud-detection-service:1.0
     container_name: fraud-detection-service

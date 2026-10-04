@@ -23,7 +23,6 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="payment-service" target="25" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">
@@ -32,7 +31,6 @@
       <module name="api-gateway" options="-parameters" />
       <module name="fraud-detection-service" options="-parameters" />
       <module name="notification-service" options="-parameters" />
-      <module name="payment-service" options="-parameters" />
       <module name="transaction-service" options="-parameters" />
     </option>
   </component>

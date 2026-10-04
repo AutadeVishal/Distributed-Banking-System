@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7d6ed09a6-7c6d-4e5a-8f57-2a6f9e7f4d1a",
     "name": "Distributed Banking System",
-    "description": "Requests for the account, transaction, and payment APIs. The collection uses the API gateway by default.",
+    "description": "Requests for the account and transaction APIs. The collection uses the API gateway by default.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -298,67 +298,6 @@
                   "key": "otp",
                   "value": "{{otp}}"
                 }
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "Payments",
-      "item": [
-        {
-          "name": "Create payment order",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"accountNumber\": \"{{accountNumber}}\",\n  \"amount\": 250.00,\n  \"description\": \"Postman payment test\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/payment/create-order",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "payment",
-                "create-order"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Payment webhook",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"event\": \"payment.captured\",\n  \"payload\": {}\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/payment/webhook",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "payment",
-                "webhook"
               ]
             }
           }

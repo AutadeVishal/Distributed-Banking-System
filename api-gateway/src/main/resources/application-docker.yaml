@@ -32,16 +32,5 @@ spring:
                     redis-rate-limiter.replenishRate: 10
                     redis-rate-limiter.burstCapacity: 20
                     redis-rate-limiter.requestedTokens: 1
-            - id: payment-service
-              uri: http://payment-service:8083
-              predicates:
-                - Path=/api/v1/payment/**
-              filters:
-                - name: RequestRateLimiter
-                  args:
-                    key-resolver: "#{@keyResolver}"
-                    redis-rate-limiter.replenishRate: 10
-                    redis-rate-limiter.burstCapacity: 20
-                    redis-rate-limiter.requestedTokens: 1
 server:
   port: 8080
