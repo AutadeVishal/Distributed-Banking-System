@@ -38,6 +38,12 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.CONFLICT, "INVALID_TRANSACTION_STATE", ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidOtpException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOtp(
+            InvalidOtpException ex) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_OTP", ex.getMessage());
+    }
+
     @ExceptionHandler(TransactionServiceException.class)
     public ResponseEntity<ErrorResponse> handleTransactionService(
             TransactionServiceException ex) {

@@ -123,7 +123,7 @@ public class TransactionEventConsumer {
                 failedEvent.transactionId(),
                 failedEvent.title(),
                 failedEvent.reason(),
-                false
+                true
         );
     }
 

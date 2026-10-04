@@ -6,13 +6,13 @@ import com.banking.events.TransactionCompletedEvent;
 import com.banking.events.TransactionSettlementCompletedEvent;
 import com.banking.events.TransactionSettlementRequestedEvent;
 import com.banking.events.VerificationRequiredEvent;
-import com.banking.events.FraudDetectedEvent;
 import com.banking.transactionservice.client.AccountServiceClient;
 import com.banking.transactionservice.dto.TransactionResponse;
 import com.banking.transactionservice.dto.TransferRequest;
 import com.banking.transactionservice.entity.IdempotencyRecord;
 import com.banking.transactionservice.entity.Transaction;
 import com.banking.transactionservice.entity.TransactionStatus;
+import com.banking.transactionservice.exception.InvalidOtpException;
 import com.banking.transactionservice.entity.TransactionType;
 import com.banking.transactionservice.exception.TransactionNotFoundException;
 import com.banking.transactionservice.exception.TransactionCreationException;
@@ -52,8 +52,6 @@ public class TransactionService {
     private static final String TRANSACTION_INITIATED_TOPIC =
             "transaction.initiated";
 
-    private static final String FRAUD_DETECTED_TOPIC =
-            "fraud.detected";
 
     private static final String TRANSACTION_SETTLEMENT_REQUESTED_TOPIC =
             "transaction.settlement.requested";
@@ -274,7 +272,7 @@ public class TransactionService {
                 .build();
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidOtpException.class)
     public TransactionResponse verifyOTP(
             Long transactionId,
             String otp
@@ -338,17 +336,17 @@ public class TransactionService {
             );
 
             if (attempts != null && attempts >= MAX_OTP_ATTEMPTS) {
-                String reason = "Account locked after 3 incorrect OTP submissions";
+                String reason =
+                        "Transaction flagged because suspicious activity was detected after 3 incorrect OTP submissions";
                 accountServiceClient.lockAccount(
                         transaction.getSenderAccountNumber()
                 );
 
                 redisTemplate.delete(otpKey);
                 redisTemplate.delete(attemptsKey);
-                publishFraudDetected(transaction, reason);
-                failTransaction(
+                flagTransaction(
                         transaction.getId(),
-                        "Transaction Rejected",
+                        "Transaction Flagged",
                         reason,
                         true
                 );
@@ -361,7 +359,11 @@ public class TransactionService {
                 );
             }
 
-            return mapToResponse(transaction);
+            throw new InvalidOtpException(
+                    attempts != null && attempts >= MAX_OTP_ATTEMPTS
+                            ? "Invalid OTP. The transaction has been rejected after 3 incorrect attempts."
+                            : "Invalid OTP"
+            );
         }
 
         log.info(
@@ -371,8 +373,6 @@ public class TransactionService {
 
         redisTemplate.delete(otpKey);
 
-        transaction.setTransactionStatus(TransactionStatus.PROCESSING);
-        transactionRepository.save(transaction);
         publishSettlementRequested(transaction);
 
         return mapToResponse(transaction);
@@ -424,6 +424,7 @@ public class TransactionService {
 
         if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
                 || transaction.getTransactionStatus() == TransactionStatus.FAILED
+                || transaction.getTransactionStatus() == TransactionStatus.FLAGGED
                 ) {
             log.info(
                     "Transaction {} already settled or failed; ignoring clean result",
@@ -446,7 +447,8 @@ public class TransactionService {
                         "Transaction not found"
                 ));
         if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
-                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED
+                || transaction.getTransactionStatus() == TransactionStatus.FLAGGED) {
             log.info(
                     "SAGA - Ignoring failure for transaction {} already in status {}",
                     transactionId,
@@ -463,6 +465,45 @@ public class TransactionService {
         transactionRepository.save(transaction);
         log.warn(
                 "SAGA - Transaction {} failed; amount: {} from: {} to: {}; reason: {}",
+                transaction.getId(),
+                transaction.getAmount(),
+                transaction.getSenderAccountNumber(),
+                transaction.getReceiverAccountNumber(),
+                failureReason
+        );
+
+        if (publishNotification) {
+            publishFailureNotification(transaction, title, reason);
+        }
+    }
+
+    private void flagTransaction(
+            Long transactionId,
+            String title,
+            String reason,
+            boolean publishNotification
+    ) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new TransactionNotFoundException(
+                        "Transaction not found"
+                ));
+        if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED
+                || transaction.getTransactionStatus() == TransactionStatus.FLAGGED) {
+            log.info(
+                    "SAGA - Ignoring flag for transaction {} already in status {}",
+                    transactionId,
+                    transaction.getTransactionStatus()
+            );
+            return;
+        }
+
+        String failureReason = title + ": " + reason;
+        transaction.setFailureReason(failureReason);
+        transaction.setTransactionStatus(TransactionStatus.FLAGGED);
+        transactionRepository.save(transaction);
+        log.warn(
+                "SAGA - Transaction {} flagged; amount: {} from: {} to: {}; reason: {}",
                 transaction.getId(),
                 transaction.getAmount(),
                 transaction.getSenderAccountNumber(),
@@ -513,7 +554,8 @@ public class TransactionService {
         );
 
         if (transaction.getTransactionStatus() == TransactionStatus.COMPLETED
-                || transaction.getTransactionStatus() == TransactionStatus.FAILED) {
+                || transaction.getTransactionStatus() == TransactionStatus.FAILED
+                || transaction.getTransactionStatus() == TransactionStatus.FLAGGED) {
             log.info("Ignoring stale settlement result for transaction {}", event.transactionId());
             return;
         }
@@ -536,7 +578,21 @@ public class TransactionService {
                         transaction.getReceiverAccountNumber(),
                         transaction.getAmount(),
                         transaction.getDescription()
-                ));
+                ))
+                .whenComplete((result, error) -> {
+                    if (error != null) {
+                        log.error(
+                                "Could not publish success notification for transaction {}",
+                                transaction.getId(),
+                                error
+                        );
+                        return;
+                    }
+                    log.info(
+                            "Success notification queued for transaction {}",
+                            transaction.getId()
+                    );
+                });
 
         log.info(
                 "SAGA COMPLETE - transaction : {} completed",
@@ -545,6 +601,13 @@ public class TransactionService {
     }
 
     private void publishSettlementRequested(Transaction transaction) {
+        transaction.setTransactionStatus(TransactionStatus.PENDING);
+        transactionRepository.save(transaction);
+        log.info(
+                "SAGA - Transaction {} marked PENDING before settlement request",
+                transaction.getId()
+        );
+
         TransactionSettlementRequestedEvent event =
                 new TransactionSettlementRequestedEvent(
                         transaction.getId(),
@@ -569,19 +632,6 @@ public class TransactionService {
                 transaction.getAmount(),
                 transaction.getSenderAccountNumber(),
                 transaction.getReceiverAccountNumber()
-        );
-    }
-
-    private void publishFraudDetected(Transaction transaction, String reason) {
-        FraudDetectedEvent event = new FraudDetectedEvent(
-                transaction.getId(),
-                transaction.getSenderAccountNumber(),
-                reason
-        );
-        kafkaTemplate.send(
-                FRAUD_DETECTED_TOPIC,
-                String.valueOf(transaction.getId()),
-                event
         );
     }
 
