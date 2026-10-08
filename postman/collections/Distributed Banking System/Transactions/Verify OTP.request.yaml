@@ -1,6 +1,6 @@
 $kind: http-request
-url: "{{baseUrl}}/api/v1/transaction/{{transactionId}}/verify-otp?otp={{otp}}"
+url: "{{baseUrl}}:8082/api/v1/transaction/6/verify-otp?otp=467337"
 method: POST
 queryParams:
-  otp: "{{otp}}"
+  otp: "467337"
 order: 5000

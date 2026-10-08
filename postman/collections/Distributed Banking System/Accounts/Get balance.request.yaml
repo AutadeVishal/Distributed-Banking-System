@@ -1,4 +1,4 @@
 $kind: http-request
-url: "{{baseUrl}}/api/v1/account/{{accountNumber}}/balance"
+url: "{{baseUrl}}:8080/api/v1/account/50563865636762849283/balance"
 method: GET
 order: 4000

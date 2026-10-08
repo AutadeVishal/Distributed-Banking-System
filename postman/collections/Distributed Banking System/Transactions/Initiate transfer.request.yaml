@@ -1,5 +1,5 @@
 $kind: http-request
-url: "{{baseUrl}}/api/v1/transaction/transfer"
+url: "{{baseUrl}}:8081/api/v1/transaction/transfer"
 method: POST
 headers:
   Content-Type: application/json
@@ -8,8 +8,8 @@ body:
   type: text
   content: |-
     {
-      "senderAccountNumber": "{{accountNumber}}",
-      "receiverAccountNumber": "{{receiverAccountNumber}}",
+      "senderAccountNumber": "50563865636762849283",
+      "receiverAccountNumber": "27564023181923056520",
       "amount": 100.00,
       "description": "Postman test transfer"
     }

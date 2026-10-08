@@ -177,7 +177,13 @@ public class AccountService {
     deduct balance from sender
     called by transaction service
      */
-    @Transactional(timeout = 10)
+    /*
+    No Roll Back for account service Exceptoin class
+     */
+    @Transactional(
+            timeout = 10,
+            noRollbackFor = AccountServiceException.class
+    )
     public void transfer(
             String senderAccountNumber,
             String receiverAccountNumber,

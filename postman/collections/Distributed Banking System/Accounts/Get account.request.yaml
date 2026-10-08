@@ -1,4 +1,5 @@
 $kind: http-request
-url: "{{baseUrl}}/api/v1/account/{{accountNumber}}"
+url: |
+  {{baseUrl}}:8080/api/v1/account/    "senderAccountNumber": "50563865636762849283",
 method: GET
 order: 3000
