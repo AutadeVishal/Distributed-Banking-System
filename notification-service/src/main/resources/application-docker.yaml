@@ -2,7 +2,7 @@ spring:
   application:
     name: notification-service
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
@@ -17,4 +17,4 @@ spring:
         spring.json.trusted.packages: "com.banking.events,java.lang,java.util"
         spring.json.use.type.headers: true
 server:
-  port: 8085
+  port: ${NOTIFICATION_SERVICE_PORT:8085}

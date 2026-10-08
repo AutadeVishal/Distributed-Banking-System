@@ -2,7 +2,7 @@ spring:
   application:
     name: fraud-detection-service
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
@@ -18,14 +18,14 @@ spring:
         spring.json.use.type.headers: true
   data:
     redis:
-      host: redis
-      port: 6379
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
 fraud:
-  max-transaction-per-minute: 5
-  suspicious_amount_multiplier: 2
-  max_balance_percentage: 0.6
+  max-transaction-per-minute: ${FRAUD_MAX_TRANSACTIONS_PER_MINUTE:5}
+  suspicious_amount_multiplier: ${FRAUD_SUSPICIOUS_AMOUNT_MULTIPLIER:2}
+  max_balance_percentage: ${FRAUD_MAX_BALANCE_PERCENTAGE:0.6}
 account:
   service:
-    url: http://account-service:8081
+    url: ${ACCOUNT_SERVICE_URL:http://account-service:8081}
 server:
-  port: 8084
+  port: ${FRAUD_DETECTION_SERVICE_PORT:8084}

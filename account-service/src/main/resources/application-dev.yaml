@@ -2,14 +2,14 @@ spring:
   application:
     name: account-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/accounts_db
-    username: postgres
-    password: 1234
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:accounts_db}
+    username: ${POSTGRES_USER:postgres}
+    password: ${POSTGRES_PASSWORD:localdev}
   jpa:
     hibernate:
       ddl-auto: update
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
@@ -24,4 +24,4 @@ spring:
         spring.json.trusted.packages: "com.banking.events,java.lang,java.util"
         spring.json.use.type.headers: true
 server:
-  port: 8081
+  port: ${ACCOUNT_SERVICE_PORT:8081}

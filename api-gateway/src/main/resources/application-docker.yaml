@@ -3,34 +3,34 @@ spring:
     name: api-gateway
   data:
     redis:
-      host: redis
-      port: 6379
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
   cloud:
     gateway:
       server:
         webflux:
           routes:
             - id: account-service
-              uri: http://account-service:8081
+              uri: ${ACCOUNT_SERVICE_URL:http://account-service:8081}
               predicates:
                 - Path=/api/v1/account/**
               filters:
                 - name: RequestRateLimiter
                   args:
                     key-resolver: "#{@keyResolver}"
-                    redis-rate-limiter.replenishRate: 10
-                    redis-rate-limiter.burstCapacity: 20
-                    redis-rate-limiter.requestedTokens: 1
+                    redis-rate-limiter.replenishRate: ${RATE_LIMIT_REPLENISH_RATE:10}
+                    redis-rate-limiter.burstCapacity: ${RATE_LIMIT_BURST_CAPACITY:20}
+                    redis-rate-limiter.requestedTokens: ${RATE_LIMIT_REQUESTED_TOKENS:1}
             - id: transaction-service
-              uri: http://transaction-service:8082
+              uri: ${TRANSACTION_SERVICE_URL:http://transaction-service:8082}
               predicates:
                 - Path=/api/v1/transaction/**
               filters:
                 - name: RequestRateLimiter
                   args:
                     key-resolver: "#{@keyResolver}"
-                    redis-rate-limiter.replenishRate: 10
-                    redis-rate-limiter.burstCapacity: 20
-                    redis-rate-limiter.requestedTokens: 1
+                    redis-rate-limiter.replenishRate: ${RATE_LIMIT_REPLENISH_RATE:10}
+                    redis-rate-limiter.burstCapacity: ${RATE_LIMIT_BURST_CAPACITY:20}
+                    redis-rate-limiter.requestedTokens: ${RATE_LIMIT_REQUESTED_TOKENS:1}
 server:
-  port: 8080
+  port: ${API_GATEWAY_PORT:8080}

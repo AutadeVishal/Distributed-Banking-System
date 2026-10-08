@@ -2,15 +2,15 @@ spring:
   application:
     name: transaction-service
   datasource:
-    url: jdbc:postgresql://postgres:5432/transactions_db
-    username: postgres
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${TRANSACTIONS_POSTGRES_DB:transactions_db}
+    username: ${POSTGRES_USER:postgres}
     password: ${POSTGRES_PASSWORD:localdev}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
       ddl-auto: update
   kafka:
-    bootstrap-servers: kafka:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
@@ -26,10 +26,10 @@ spring:
         spring.json.use.type.headers: true
   data:
     redis:
-      host: redis
-      port: 6379
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
 account:
   service:
-    url: http://account-service:8081
+    url: ${ACCOUNT_SERVICE_URL:http://account-service:8081}
 server:
-  port: 8082
+  port: ${TRANSACTION_SERVICE_PORT:8082}
