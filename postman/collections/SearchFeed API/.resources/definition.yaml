@@ -1,0 +1,16 @@
+$kind: collection
+description: API requests grouped by service. Set baseUrl and accessToken collection variables. Auth endpoints are public; other service folders use Bearer {{accessToken}}.
+variables:
+  baseUrl: http://localhost:8080
+  accessToken: ""
+  userId: replace-user-id
+  targetUserId: replace-target-user-id
+  connectionId: replace-connection-id
+  postId: replace-post-id
+  authorId: replace-author-id
+auth:
+  - id: 907a2faf-3d02-4b24-b296-3c2c3b358bb6
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: "{{accessToken}}"

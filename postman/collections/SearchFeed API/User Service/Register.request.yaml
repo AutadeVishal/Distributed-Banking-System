@@ -1,0 +1,21 @@
+$kind: http-request
+description: Returns 201 and AuthResponse. Copy accessToken from the response into the collection variable.
+url: "{{baseUrl}}:8081/api/v1/auth/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "firstName": "Vishal",
+      "lastName": "Autade",
+      "email": "vishalautade@gmail.com",
+      "password": "Vishal@1234",
+      "headline": "Engineer in TCS",
+      "about": "Hello i am confident in system design ,cpp,java ",
+      "location": "Pune"
+    }
+auth:
+  type: noauth
+order: 1000

@@ -1,0 +1,15 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/users/{{userId}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "headline": "Principal Engineer",
+      "about": "Building useful things",
+      "location": "London",
+      "skills": ["Java", "Distributed systems"]
+    }
+order: 4000

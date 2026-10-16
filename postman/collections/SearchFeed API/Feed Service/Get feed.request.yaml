@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/feed?page=0&size=10"
+method: GET
+queryParams:
+  page: "0"
+  size: "10"
+order: 1000

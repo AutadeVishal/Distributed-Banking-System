@@ -1,0 +1,5 @@
+$kind: http-request
+name: Clear my feed cache (admin/debug)
+url: "{{baseUrl}}/api/v1/feed/cache"
+method: DELETE
+order: 2000

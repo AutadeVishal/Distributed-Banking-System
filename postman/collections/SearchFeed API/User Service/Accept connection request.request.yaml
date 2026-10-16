@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/users/connections/{{connectionId}}/accept"
+method: PATCH
+order: 6000

@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}:8081/api/v1/users/{{userId}}"
+method: GET
+order: 3000

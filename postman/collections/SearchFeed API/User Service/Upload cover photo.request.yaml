@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/users/{{userId}}/cover-photo"
+method: PUT
+body:
+  type: formdata
+  content:
+    - type: file
+      key: file
+      src: []
+order: 10000

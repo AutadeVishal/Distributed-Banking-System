@@ -1,0 +1,8 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/search/posts?q=distributed&page=0&size=10"
+method: GET
+queryParams:
+  q: distributed
+  page: "0"
+  size: "10"
+order: 2000

@@ -7,6 +7,7 @@ workspace:
 cloudResources:
   collections:
     ../postman/collections/Distributed Banking System: 1fe9a6e8-f501-4cd2-985f-d9727c31cb79
+    ../postman/collections/SearchFeed API: ed296f69-399f-4772-8d68-34bb8403c8c8
 
 # All resources in the `postman/` folder are automatically registered in Local View.
 # Point to additional files outside the `postman/` folder to register them individually. Example:

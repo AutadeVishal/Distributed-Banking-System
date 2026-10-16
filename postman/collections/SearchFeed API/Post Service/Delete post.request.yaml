@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/posts/{{postId}}"
+method: DELETE
+order: 7000

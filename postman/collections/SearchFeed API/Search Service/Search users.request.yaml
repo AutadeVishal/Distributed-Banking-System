@@ -1,0 +1,8 @@
+$kind: http-request
+url: "{{baseUrl}}/api/v1/search/users?q=engineer&page=0&size=10"
+method: GET
+queryParams:
+  q: engineer
+  page: "0"
+  size: "10"
+order: 1000

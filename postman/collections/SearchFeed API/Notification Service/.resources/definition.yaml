@@ -1,0 +1,3 @@
+$kind: collection
+description: No public notification REST endpoints are implemented yet. This service currently consumes Kafka events only.
+order: 5000
